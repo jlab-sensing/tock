@@ -11,700 +11,724 @@ use kernel::utilities::StaticRef;
 struct RccRegisters {
     /// clock control register
     cr: ReadWrite<u32, CR::Register>,
-    /// PLL configuration register
-    pllcfgr: ReadWrite<u32, PLLCFGR::Register>,
+    icsr: ReadWrite<u32, ICSCR::Register>,
     /// clock configuration register
     cfgr: ReadWrite<u32, CFGR::Register>,
-    /// clock interrupt register
-    cir: ReadWrite<u32, CIR::Register>,
+    /// PLL configuration register
+    pllcfgr: ReadWrite<u32, PLLCFGR::Register>,
+    _reserved0: [u8; 8],
+    cier: ReadWrite<u32, CIER::Register>,
+    cifgr: ReadWrite<u32, CIFGR::Register>,
+    cicr: ReadWrite<u32, CICR::Register>,
+    _reserved1: [u8; 4],
     /// AHB1 peripheral reset register
     ahb1rstr: ReadWrite<u32, AHB1RSTR::Register>,
     /// AHB2 peripheral reset register
     ahb2rstr: ReadWrite<u32, AHB2RSTR::Register>,
     /// AHB3 peripheral reset register
     ahb3rstr: ReadWrite<u32, AHB3RSTR::Register>,
-    _reserved0: [u8; 4],
-    /// APB1 peripheral reset register
-    apb1rstr: ReadWrite<u32, APB1RSTR::Register>,
+    _reserved2: [u8; 4],
+    /// APB1 peripheral reset register 1
+    apb1rstr1: ReadWrite<u32, APB1RSTR::Register>,
+    apb1rstr2: ReadWrite<u32, APB1RSTR2::Register>,
     /// APB2 peripheral reset register
     apb2rstr: ReadWrite<u32, APB2RSTR::Register>,
-    _reserved1: [u8; 8],
+    apb3rstr: ReadWrite<u32, APB3RSTR::Register>,
     /// AHB1 peripheral clock register
     ahb1enr: ReadWrite<u32, AHB1ENR::Register>,
     /// AHB2 peripheral clock enable register
     ahb2enr: ReadWrite<u32, AHB2ENR::Register>,
     /// AHB3 peripheral clock enable register
     ahb3enr: ReadWrite<u32, AHB3ENR::Register>,
-    _reserved2: [u8; 4],
-    /// APB1 peripheral clock enable register
-    apb1enr: ReadWrite<u32, APB1ENR::Register>,
+    _reserved3: [u8; 4],
+    /// APB1 peripheral clock enable register 1
+    apb1enr1: ReadWrite<u32, APB1ENR::Register>,
+    apb1enr2: ReadWrite<u32, APB1ENR2::Register>,
     /// APB2 peripheral clock enable register
     apb2enr: ReadWrite<u32, APB2ENR::Register>,
-    _reserved3: [u8; 8],
-    /// AHB1 peripheral clock enable in low power mode register
-    ahb1lpenr: ReadWrite<u32, AHB1LPENR::Register>,
-    /// AHB2 peripheral clock enable in low power mode register
-    ahb2lpenr: ReadWrite<u32, AHB2LPENR::Register>,
-    /// AHB3 peripheral clock enable in low power mode register
-    ahb3lpenr: ReadWrite<u32, AHB3LPENR::Register>,
+    apb3enr: ReadWrite<u32, APB3ENR::Register>,
+    ahb1smenr: ReadWrite<u32, AHB1SMENR::Register>,
+    ahb2smenr: ReadWrite<u32, AHB2SMENR::Register>,
+    ahb3smenr: ReadWrite<u32, AHB3SMENR::Register>,
     _reserved4: [u8; 4],
-    /// APB1 peripheral clock enable in low power mode register
-    apb1lpenr: ReadWrite<u32, APB1LPENR::Register>,
-    /// APB2 peripheral clock enabled in low power mode register
-    apb2lpenr: ReadWrite<u32, APB2LPENR::Register>,
-    _reserved5: [u8; 8],
-    /// Backup domain control register
+    apb1smenr1: ReadWrite<u32, APB1SMENR::Register>,
+    apb1smenr2: ReadWrite<u32, APB1SMENR2::Register>,
+    apb2smenr: ReadWrite<u32, APB2SMENR::Register>,
+    apb3smenr: ReadWrite<u32, APB3SMENR::Register>,
+    ccipr: ReadWrite<u32, CCIPR::Register>,
+    _reserved5: [u8; 4],
     bdcr: ReadWrite<u32, BDCR::Register>,
-    /// clock control & status register
     csr: ReadWrite<u32, CSR::Register>,
-    _reserved6: [u8; 8],
-    /// spread spectrum clock generation register
-    sscgr: ReadWrite<u32, SSCGR::Register>,
-    /// PLLI2S configuration register
-    plli2scfgr: ReadWrite<u32, PLLI2SCFGR::Register>,
-    /// PLL configuration register
-    pllsaicfgr: ReadWrite<u32, PLLSAICFGR::Register>,
-    /// Dedicated Clock Configuration Register
-    dckcfgr: ReadWrite<u32, DCKCFGR::Register>,
-    /// clocks gated enable register
-    ckgatenr: ReadWrite<u32, CKGATENR::Register>,
-    /// dedicated clocks configuration register 2
-    dckcfgr2: ReadWrite<u32, DCKCFGR2::Register>,
+    _reserved6: [u8; 14], // TODO: confirm that this offset is correct
+    extcfgr: ReadWrite<u32, EXTCFGR::Register>,
 }
 
+// TODO ADD DOC COMMENTS
 register_bitfields![u32,
     CR [
-        /// PLLI2S clock ready flag
-        PLLI2SRDY OFFSET(27) NUMBITS(1) [],
-        /// PLLI2S enable
-        PLLI2SON OFFSET(26) NUMBITS(1) [],
-        /// Main PLL (PLL) clock ready flag
+        /// Main PLL clock ready flag
         PLLRDY OFFSET(25) NUMBITS(1) [],
-        /// Main PLL (PLL) enable
+        /// Main PLL enable
         PLLON OFFSET(24) NUMBITS(1) [],
-        /// Clock security system enable
+        /// HSE32 VDDTCXO output on package
+        /// pin PB0-VDDTCXO enable
+        HSEBYPPWR OFFSET(21) NUMBITS(1) [
+            PBOSelected = 0,
+            VDDTCXOSelected = 1
+        ],
+        /// HSE32 SYSCLK prescaler
+        HSEPRE OFFSET(20) NUMBITS(1) [
+            DivideBy1 = 0,
+            DivideBy2 = 1
+        ],
+        /// HSE32 clock security system enable
         CSSON OFFSET(19) NUMBITS(1) [],
-        /// HSE clock bypass
-        HSEBYP OFFSET(18) NUMBITS(1) [],
-        /// HSE clock ready flag
+        /// HSE32 clock ready flag (set and cleared by hardware)
         HSERDY OFFSET(17) NUMBITS(1) [],
-        /// HSE clock enable
+        /// HSE32 clock enable for CPU
         HSEON OFFSET(16) NUMBITS(1) [],
-        /// Internal high-speed clock calibration
-        HSICAL OFFSET(8) NUMBITS(8) [],
-        /// Internal high-speed clock trimming
-        HSITRIM OFFSET(3) NUMBITS(5) [],
-        /// Internal high-speed clock ready flag
-        HSIRDY OFFSET(1) NUMBITS(1) [],
-        /// Internal high-speed clock enable
-        HSION OFFSET(0) NUMBITS(1) []
+        /// HSI16 kernel clock ready flag for peripheral requests
+        HSIKERDY OFFSET(12) NUMBITS(1) [],
+        /// HSI16 automatic start from stop mode
+        HSIASFS OFFSET(11) NUMBITS(1) [],
+        /// HSI16 clock ready flag (set and cleared by hardware)
+        HSIRDY OFFSET(10) NUMBITS(1) [],
+        /// HSI16 enable for peripheral kernel clocks
+        HSIKERON OFFSET(9) NUMBITS(1) [],
+        /// HSI16 clock enable
+        HSION OFFSET(8) NUMBITS(1) [],
+        /// MSI clock ranges
+        MSIRANGE OFFSET(4) NUMBITS(4) [
+            Range0 = 0b0000,
+            Range1 = 0b0001,
+            Range2 = 0b0010,
+            Range3 = 0b0011,
+            Range4 = 0b0100,
+            Range5 = 0b0101,
+            Range6 = 0b0110,
+            Range7 = 0b0111,
+            Range8 = 0b1000,
+            Range9 = 0b1001,
+            Range10 = 0b1010,
+            Range11 = 0b1011,
+        ],
+        /// MSI range control selection
+        MSIRGSEL OFFSET(3) NUMBITS(1) [],
+        /// MSI clock PLL enable
+        MSIPLLEN OFFSET(2) NUMBITS(1) [],
+        /// MSI clock ready flag
+        MSIRDY OFFSET(1) NUMBITS(1) [],
+        /// MSI clock enable
+        MSION OFFSET(0) NUMBITS(1) [],
     ],
-    PLLCFGR [
-        /// Main PLL (PLL) division factor for USB OTG FS, SDIO and random num
-        PLLQ OFFSET(24) NUMBITS(4) [],
-        /// Main PLL(PLL) and audio PLL (PLLI2S) entry clock source
-        PLLSRC OFFSET(22) NUMBITS(1) [
-            HSI = 0,
-            HSE = 1,
-        ],
-        /// Main PLL (PLL) division factor for main system clock
-        PLLP OFFSET(16) NUMBITS(2) [
-            DivideBy2 = 0b00,
-            DivideBy4 = 0b01,
-            DivideBy6 = 0b10,
-            DivideBy8 = 0b11,
-        ],
-        /// Main PLL (PLL) multiplication factor for VCO
-        PLLN OFFSET(6) NUMBITS(9) [],
-        /// Division factor for the main PLL (PLL) and audio PLL (PLLI2S) input
-        PLLM OFFSET(0) NUMBITS(6) []
+    ICSCR [
+        /// HSI16 clock trimming
+        HSITRIM OFFSET(24) NUMBITS(7) [],
+        /// HSI16 clock calibration
+        HSICAL OFFSET(16) NUMBITS(8) [],
+        /// MSI clock trimming
+        MSITRIM OFFSET(8) NUMBITS(8) [],
+        /// MSI clock calibration
+        MSICAL OFFSET(0) NUMBITS (8) [],
     ],
     CFGR [
-        /// Microcontroller clock output 2
-        MCO2 OFFSET(30) NUMBITS(2) [],
-        /// MCO2 prescaler
-        MCO2PRE OFFSET(27) NUMBITS(3) [],
-        /// MCO1 prescaler
-        MCO1PRE OFFSET(24) NUMBITS(3) [],
-        /// I2S clock selection
-        I2SSRC OFFSET(23) NUMBITS(1) [],
-        /// Microcontroller clock output 1
-        MCO1 OFFSET(21) NUMBITS(2) [],
-        /// HSE division factor for RTC clock
-        RTCPRE OFFSET(16) NUMBITS(5) [],
-        /// APB high-speed prescaler (APB2)
+        /// Microcontroller clock output prescaler
+        MCOPRE OFFSET(28) NUMBITS(3) [
+            DivideBy1 = 0b000,
+            DivideBy2 = 0b001,
+            DivideBy4 = 0b010,
+            DivideBy8 = 0b011,
+            DivideBy16 = 0b100,
+        ],
+        /// Microcontroller clock output selection
+        MCOSEL OFFSET(24) NUMBITS(4) [
+            NoClock = 0b0000,
+            SYSCLK = 0b0001,
+            MSI = 0b0010,
+            HSI16 = 0b0011,
+            HSE32 = 0b0100,
+            PLLR = 0b0101,
+            LSI = 0b0110,
+            LSE = 0b1000,
+            PLLP = 0b1101,
+            PLLQ = 0b1110
+        ],
+        /// PCLK2 prescaler flag (APB2)
+        PPRE2F OFFSET(18) NUMBITS(1) [],
+        /// PCLK1 prescaler flag (APB1)
+        PPRE1F OFFSET(17) NUMBITS(1) [],
+        /// HCLK1 prescaler flag (CPU, AHB1, and AHB2)
+        HPRE OFFSET(16) NUMBITS(1) [],
+        /// Wake-up from Stop and CSS backup clock selection
+        STOPWUICK OFFSET(15) NUMBITS(1) [],
+        /// PCLK2 high-speed prescaler (APB2)
         PPRE2 OFFSET(13) NUMBITS(3) [],
-        /// APB Low speed prescaler (APB1)
+        /// PCLK1 low-speed prescaler (APB1)
         PPRE1 OFFSET(10) NUMBITS(3) [],
-        /// AHB prescaler
+        /// HCLK1 prescaler (CPU, AHB1, and AHB2)
         HPRE OFFSET(4) NUMBITS(4) [],
         /// System clock switch status
-        SWS OFFSET(2) NUMBITS(2) [],
+        SWS OFFSET(2) NUMBITS(2) [
+            MSI = 0b00,
+            HSI16 = 0b01,
+            HSE32 = 0b10,
+            PLL = 0b11,
+        ],
         /// System clock switch
         SW OFFSET(0) NUMBITS(2) [
-            HSI = 0b00,
-            HSE = 0b01,
-            PLL = 0b10,
+            MSI = 0b00,
+            HSI16 = 0b01,
+            HSE32 = 0b10,
+            PLL = 0b11,
         ]
     ],
-    CIR [
-        /// Clock security system interrupt clear
-        CSSC OFFSET(23) NUMBITS(1) [],
-        /// PLLSAI Ready Interrupt Clear
-        PLLSAIRDYC OFFSET(22) NUMBITS(1) [],
-        /// PLLI2S ready interrupt clear
-        PLLI2SRDYC OFFSET(21) NUMBITS(1) [],
-        /// Main PLL(PLL) ready interrupt clear
-        PLLRDYC OFFSET(20) NUMBITS(1) [],
-        /// HSE ready interrupt clear
-        HSERDYC OFFSET(19) NUMBITS(1) [],
-        /// HSI ready interrupt clear
-        HSIRDYC OFFSET(18) NUMBITS(1) [],
-        /// LSE ready interrupt clear
-        LSERDYC OFFSET(17) NUMBITS(1) [],
-        /// LSI ready interrupt clear
-        LSIRDYC OFFSET(16) NUMBITS(1) [],
-        /// PLLSAI Ready Interrupt Enable
-        PLLSAIRDYIE OFFSET(14) NUMBITS(1) [],
-        /// PLLI2S ready interrupt enable
-        PLLI2SRDYIE OFFSET(13) NUMBITS(1) [],
-        /// Main PLL (PLL) ready interrupt enable
-        PLLRDYIE OFFSET(12) NUMBITS(1) [],
+    PLLCFGR [
+        /// Main PLL division factor for PLLRCLK
+        PLLR OFFSET(29) NUMBITS(3) [
+            DivideBy2 = 0b001,
+            DivideBy3 = 0b010,
+            DivideBy4 = 0b011,
+            DivideBy5 = 0b100,
+            DivideBy6 = 0b101,
+            DivideBy7 = 0b110,
+            DivideBy8 = 0b111,
+        ],
+        /// Main PLL PLLRCLK output enable
+        PLLREN OFFSET(28) NUMBITS(1) [],
+        /// Main PLL division factor for PLLQCLK
+        PLLQ OFFSET(25) NUMBITS(3) [
+            DivideBy2 = 0b001,
+            DivideBy3 = 0b010,
+            DivideBy4 = 0b011,
+            DivideBy5 = 0b100,
+            DivideBy6 = 0b101,
+            DivideBy7 = 0b110,
+            DivideBy8 = 0b111,
+        ],
+        /// Main PLL PLLQCLK output enable
+        PLLQEN OFFSET(24) NUMBITS(1) [],
+        /// Main PLL division factor for PLLPCLK
+        PLLP OFFSET(17) NUMBITS(5) [
+            DivideBy2 = 0b00001,
+            DivideBy3 = 0b00010,
+            DivideBy4 = 0b00011,
+            DivideBy5 = 0b00100,
+            DivideBy6 = 0b00101,
+            DivideBy7 = 0b00110,
+            DivideBy8 = 0b00111,
+            DivideBy9 = 0b01000,
+            DivideBy10 = 0b01001,
+            DivideBy11 = 0b01010,
+            DivideBy12 = 0b01011,
+            DivideBy13 = 0b01100,
+            DivideBy14 = 0b01101,
+            DivideBy15 = 0b01110,
+            DivideBy16 = 0b01111,
+            DivideBy17 = 0b10000,
+            DivideBy18 = 0b10001,
+            DivideBy19 = 0b10010,
+            DivideBy20 = 0b10011,
+            DivideBy21 = 0b10100,
+            DivideBy22 = 0b10101,
+            DivideBy23 = 0b10110,
+            DivideBy24 = 0b10111,
+            DivideBy25 = 0b11000,
+            DivideBy26 = 0b11001,
+            DivideBy27 = 0b11010,
+            DivideBy28 = 0b11011,
+            DivideBy29 = 0b11100,
+            DivideBy30 = 0b11101,
+            DivideBy31 = 0b11110,
+            DivideBy32 = 0b11111,
+        ],
+        /// Main PLL PLLPCLK output enable
+        PLLPEN OFFSET(16) NUMBITS(1) [],
+        /// Main PLL multiplication factor for VCO.
+        /// Valid values range from 6-127.
+        PLLN OFFSET(8) NUMBITS(7) [],
+        /// Main PLL division factor for main PLL
+        /// input clock.
+        PLLM OFFSET(4) NUMBITS(3) [
+            DivideBy1 = 0b000,
+            DivideBy2 = 0b001,
+            DivideBy3 = 0b010,
+            DivideBy4 = 0b011,
+            DivideBy5 = 0b100,
+            DivideBy6 = 0b101,
+            DivideBy7 = 0b110,
+            DivideBy8 = 0b111,
+        ],
+        /// Main PLL entry clock source
+        PLLSRC OFFSET(0) NUMBITS(2) [
+            None = 0b00,
+            MSI = 0b01,
+            HSI16 = 0b10,
+            HSE32 = 0b11,
+        ]
+    ],
+    CIER [
+        /// LSE clock security system interrupt enable
+        LSECSSIE OFFSET(9) NUMBITS(1) [],
+        /// PLL ready interrupt enable
+        PLLRDYIE OFFSET(5) NUMBITS(1) [],
         /// HSE ready interrupt enable
-        HSERDYIE OFFSET(11) NUMBITS(1) [],
+        HSERDYIE OFFSET(4) NUMBITS(1) [],
         /// HSI ready interrupt enable
-        HSIRDYIE OFFSET(10) NUMBITS(1) [],
+        HSIRDYIE OFFSET(3) NUMBITS(1) [],
+        /// MSI ready interrupt enable
+        MSIRDYIE OFFSET(2) NUMBITS(1) [],
         /// LSE ready interrupt enable
-        LSERDYIE OFFSET(9) NUMBITS(1) [],
+        LSERDYIE OFFSET(1) NUMBITS(1) [],
         /// LSI ready interrupt enable
-        LSIRDYIE OFFSET(8) NUMBITS(1) [],
-        /// Clock security system interrupt flag
-        CSSF OFFSET(7) NUMBITS(1) [],
-        /// PLLSAI ready interrupt flag
-        PLLSAIRDYF OFFSET(6) NUMBITS(1) [],
-        /// PLLI2S ready interrupt flag
-        PLLI2SRDYF OFFSET(5) NUMBITS(1) [],
-        /// Main PLL (PLL) ready interrupt flag
-        PLLRDYF OFFSET(4) NUMBITS(1) [],
+        LSIRDYIE OFFSET(0) NUMBITS(1) []
+    ],
+    CIFR [
+        /// LSE CSS flag
+        LSECSSF OFFSET(9) NUMBITS(1) [],
+        /// HSE32 CSS flag
+        CSSF OFFSET(8) NUMBITS(1) [],
+        /// PLL ready interrupt flag
+        PLLRDYF OFFSET(5) NUMBITS(1) [],
         /// HSE ready interrupt flag
-        HSERDYF OFFSET(3) NUMBITS(1) [],
+        HSERDYF OFFSET(4) NUMBITS(1) [],
         /// HSI ready interrupt flag
-        HSIRDYF OFFSET(2) NUMBITS(1) [],
+        HSIRDYF OFFSET(3) NUMBITS(1) [],
+        /// MSI ready interrupt flag
+        MSIRDYF OFFSET(2) NUMBITS(1) [],
         /// LSE ready interrupt flag
         LSERDYF OFFSET(1) NUMBITS(1) [],
         /// LSI ready interrupt flag
         LSIRDYF OFFSET(0) NUMBITS(1) []
     ],
+    CICR [
+        /// LSE CSS flag clear
+        LSECSSC OFFSET(9) NUMBITS(1) [],
+        /// HSE32 CSS flag clear
+        CSSC OFFSET(8) NUMBITS(1) [],
+        /// PLL ready interrupt clear
+        PLLRDYC OFFSET(5) NUMBITS(1) [],
+        /// HSE ready interrupt clear
+        HSERDYC OFFSET(4) NUMBITS(1) [],
+        /// HSI ready interrupt clear
+        HSIRDYC OFFSET(3) NUMBITS(1) [],
+        /// MSI ready interrupt clear
+        MSIRDYC OFFSET(2) NUMBITS(1) [],
+        /// LSE ready interrupt clear
+        LSERDYC OFFSET(1) NUMBITS(1) [],
+        /// LSI ready interrupt clear
+        LSIRDYC OFFSET(0) NUMBITS(1) []
+    ],
     AHB1RSTR [
-        /// USB OTG HS module reset
-        OTGHSRST OFFSET(29) NUMBITS(1) [],
-        /// DMA2 reset
-        DMA2RST OFFSET(22) NUMBITS(1) [],
-        /// DMA2 reset
-        DMA1RST OFFSET(21) NUMBITS(1) [],
         /// CRC reset
         CRCRST OFFSET(12) NUMBITS(1) [],
+        /// DMAMUX1 reset
+        DMAMUX1RST OFFSET(2) NUMBITS(1) [],
+        /// DMA2 reset
+        DMA2RST OFFSET(1) NUMBITS(1) [],
+        /// DMA1 reset
+        DMA1RST OFFSET(0) NUMBITS(1) [],
+    ],
+    AHB2RSTR [
         /// IO port H reset
         GPIOHRST OFFSET(7) NUMBITS(1) [],
-        /// IO port G reset
-        GPIOGRST OFFSET(6) NUMBITS(1) [],
-        /// IO port F reset
-        GPIOFRST OFFSET(5) NUMBITS(1) [],
-        /// IO port E reset
-        GPIOERST OFFSET(4) NUMBITS(1) [],
-        /// IO port D reset
-        GPIODRST OFFSET(3) NUMBITS(1) [],
         /// IO port C reset
         GPIOCRST OFFSET(2) NUMBITS(1) [],
         /// IO port B reset
         GPIOBRST OFFSET(1) NUMBITS(1) [],
         /// IO port A reset
-        GPIOARST OFFSET(0) NUMBITS(1) []
-    ],
-    AHB2RSTR [
-        /// USB OTG FS module reset
-        OTGFSRST OFFSET(7) NUMBITS(1) [],
-        /// RNG module reset
-        RNGSRST OFFSET(6) NUMBITS(1) [],
-        /// Camera interface reset
-        DCMIRST OFFSET(0) NUMBITS(1) []
+        GPIOARST OFFSET(0) NUMBITS(1) [],
     ],
     AHB3RSTR [
-        /// Flexible memory controller module reset
-        FMCRST OFFSET(0) NUMBITS(1) [],
-        /// QUADSPI module reset
-        QSPIRST OFFSET(1) NUMBITS(1) []
+        /// Flash interface reset
+        FLASHRST OFFSET(25) NUMBITS(1) [],
+        /// HSEM reset
+        HSEMRST OFFSET(19) NUMBITS(1) [],
+        /// True RNG reset
+        RNGRST OFFSET(18) NUMBITS(1) [],
+        /// AES hardware accelerator reset
+        AESRST OFFSET(17) NUMBITS(1) [],
+        /// PKA hardware accelerator reset
+        PKARST OFFSET(16) NUMBITS(1) [],
     ],
-    APB1RSTR [
-        /// TIM2 reset
-        TIM2RST OFFSET(0) NUMBITS(1) [],
-        /// TIM3 reset
-        TIM3RST OFFSET(1) NUMBITS(1) [],
-        /// TIM4 reset
-        TIM4RST OFFSET(2) NUMBITS(1) [],
-        /// TIM5 reset
-        TIM5RST OFFSET(3) NUMBITS(1) [],
-        /// TIM6 reset
-        TIM6RST OFFSET(4) NUMBITS(1) [],
-        /// TIM7 reset
-        TIM7RST OFFSET(5) NUMBITS(1) [],
-        /// TIM12 reset
-        TIM12RST OFFSET(6) NUMBITS(1) [],
-        /// TIM13 reset
-        TIM13RST OFFSET(7) NUMBITS(1) [],
-        /// TIM14 reset
-        TIM14RST OFFSET(8) NUMBITS(1) [],
-        /// Window watchdog reset
-        WWDGRST OFFSET(11) NUMBITS(1) [],
-        /// SPI 2 reset
-        SPI2RST OFFSET(14) NUMBITS(1) [],
-        /// SPI 3 reset
-        SPI3RST OFFSET(15) NUMBITS(1) [],
-        /// SPDIF-IN reset
-        SPDIFRST OFFSET(16) NUMBITS(1) [],
-        /// USART 2 reset
-        UART2RST OFFSET(17) NUMBITS(1) [],
-        /// USART 3 reset
-        UART3RST OFFSET(18) NUMBITS(1) [],
-        /// USART 4 reset
-        UART4RST OFFSET(19) NUMBITS(1) [],
-        /// USART 5 reset
-        UART5RST OFFSET(20) NUMBITS(1) [],
-        /// I2C 1 reset
-        I2C1RST OFFSET(21) NUMBITS(1) [],
-        /// I2C 2 reset
-        I2C2RST OFFSET(22) NUMBITS(1) [],
+    APB1RSTR1 [
+        /// Low-power timer 1 reset
+        LPTIM1RST OFFSET(31) NUMBITS(1) [],
+        /// DAC reset
+        DACRST OFFSET(29) NUMBITS(1) [],
         /// I2C3 reset
         I2C3RST OFFSET(23) NUMBITS(1) [],
-        /// I2CFMP1 reset
-        I2CFMP1RST OFFSET(24) NUMBITS(1) [],
-        /// CAN1 reset
-        CAN1RST OFFSET(25) NUMBITS(1) [],
-        /// CAN2 reset
-        CAN2RST OFFSET(26) NUMBITS(1) [],
-        /// Power interface reset
-        PWRRST OFFSET(28) NUMBITS(1) [],
-        /// DAC reset
-        DACRST OFFSET(29) NUMBITS(1) []
+        /// I2C2 reset
+        I2C2RST OFFSET(22) NUMBITS(1) [],
+        /// I2C1 reset
+        I2C1RST OFFSET(21) NUMBITS(1) [],
+        /// USART2 reset
+        USART2RST OFFSET(17) NUMBITS(1) [],
+        /// SPI2S2 reset
+        SPI2S2RST OFFSET(14) NUMBITS(1) [],
+        /// TIM2 timer reset
+        TIM2RST OFFSET(0) NUMBITS(1) [],
+    ],
+    APB1RSTR2 [
+        /// Low-power timer 3 reset
+        LPTIM3RST OFFSET(6) NUMBITS(1) [],
+        /// Low-power timer 2 reset
+        LPTIM2RST OFFSET(5) NUMBITS(1) [],
+        /// Low-power UART 1 reset
+        LPUART1RST OFFSET(0) NUMBITS(1) [],
     ],
     APB2RSTR [
-        /// TIM1 reset
-        TIM1RST OFFSET(0) NUMBITS(1) [],
-        /// TIM8 reset
-        TIM8RST OFFSET(1) NUMBITS(1) [],
+        /// Timer 17 reset
+        TIM17RST OFFSET(18) NUMBITS(1) [],
+        /// Timer 16 reset
+        TIM16RST OFFSET(17) NUMBITS(1) [],
         /// USART1 reset
-        USART1RST OFFSET(4) NUMBITS(1) [],
-        /// USART6 reset
-        USART6RST OFFSET(5) NUMBITS(1) [],
-        /// ADC interface reset (common to all ADCs)
-        ADCRST OFFSET(8) NUMBITS(1) [],
-        /// SDIO reset
-        SDIORST OFFSET(11) NUMBITS(1) [],
-        /// SPI 1 reset
+        USART1RST OFFSET(14) NUMBITS(1) [],
+        /// SPI1 reset
         SPI1RST OFFSET(12) NUMBITS(1) [],
-        /// SPI4 reset
-        SPI4RST OFFSET(13) NUMBITS(1) [],
-        /// System configuration controller reset
-        SYSCFGRST OFFSET(14) NUMBITS(1) [],
-        /// TIM9 reset
-        TIM9RST OFFSET(16) NUMBITS(1) [],
-        /// TIM10 reset
-        TIM10RST OFFSET(17) NUMBITS(1) [],
-        /// TIM11 reset
-        TIM11RST OFFSET(18) NUMBITS(1) [],
-        /// SAI1 reset
-        SAI1RST OFFSET(22) NUMBITS(1) [],
-        /// SAI2 reset
-        SAI2RST OFFSET(23) NUMBITS(1) []
+        /// Timer 1 reset
+        TIM1RST OFFSET(11) NUMBITS(1) [],
+        /// ADC reset
+        ADCRST OFFSET(9) NUMBITS(1) [],
+    ],
+    APB3RSTR [
+        /// Sub-GHz radio SPI reset
+        SUBGHZSPIRST OFFSET(0) NUMBITS(1) [],
     ],
     AHB1ENR [
-        /// USB OTG HSULPI clock enable
-        OTGHSULPIEN OFFSET(30) NUMBITS(1) [],
-        /// USB OTG HS clock enable
-        OTGHSEN OFFSET(29) NUMBITS(1) [],
-        /// DMA2 clock enable
-        DMA2EN OFFSET(22) NUMBITS(1) [],
-        /// DMA1 clock enable
-        DMA1EN OFFSET(21) NUMBITS(1) [],
-        /// Backup SRAM interface clock enable
-        BKPSRAMEN OFFSET(18) NUMBITS(1) [],
         /// CRC clock enable
         CRCEN OFFSET(12) NUMBITS(1) [],
+        /// DMAMUX1 clock enable
+        DMAMUX1EN OFFSET(2) NUMBITS(1) [],
+        /// DMA2 clock enable
+        DMA2EN OFFSET(1) NUMBITS(1) [],
+        /// DMA1 clock enable
+        DMA1EN OFFSET(0) NUMBITS(1) [],
+    ],
+    AHB2ENR [
         /// IO port H clock enable
         GPIOHEN OFFSET(7) NUMBITS(1) [],
-        /// IO port G clock enable
-        GPIOGEN OFFSET(6) NUMBITS(1) [],
-        /// IO port F clock enable
-        GPIOFEN OFFSET(5) NUMBITS(1) [],
-        /// IO port E clock enable
-        GPIOEEN OFFSET(4) NUMBITS(1) [],
-        /// IO port D clock enable
-        GPIODEN OFFSET(3) NUMBITS(1) [],
         /// IO port C clock enable
         GPIOCEN OFFSET(2) NUMBITS(1) [],
         /// IO port B clock enable
         GPIOBEN OFFSET(1) NUMBITS(1) [],
         /// IO port A clock enable
-        GPIOAEN OFFSET(0) NUMBITS(1) []
-    ],
-    AHB2ENR [
-        /// USB OTG FS clock enable
-        OTGFSEN OFFSET(7) NUMBITS(1) [],
-        /// RNG clock enable
-        RNGEN OFFSET(6) NUMBITS(1) [],
-        /// Camera interface enable
-        DCMIEN OFFSET(0) NUMBITS(1) []
+        GPIOAEN OFFSET(0) NUMBITS(1) [],
     ],
     AHB3ENR [
-        /// Flexible memory controller module clock enable
-        FMCEN OFFSET(0) NUMBITS(1) [],
-        /// QUADSPI memory controller module clock enable
-        QSPIEN OFFSET(1) NUMBITS(1) []
+        /// Flash memory interface clock enable
+        FLASHEN OFFSET(25) NUMBITS(1) [],
+        /// HSEM clock enable
+        HSEMEN OFFSET(19) NUMBITS(1) [],
+        /// True RNG clock enable
+        RNGEN OFFSET(18) NUMBITS(1) [],
+        /// AES hardware accelerator clock enable
+        AESEN OFFSET(17) NUMBITS(1) [],
+        /// PKA hardware accelerator clock enable
+        PKAEN OFFSET(16) NUMBITS(1) [],
     ],
-    APB1ENR [
-        /// TIM2 clock enable
-        TIM2EN OFFSET(0) NUMBITS(1) [],
-        /// TIM3 clock enable
-        TIM3EN OFFSET(1) NUMBITS(1) [],
-        /// TIM4 clock enable
-        TIM4EN OFFSET(2) NUMBITS(1) [],
-        /// TIM5 clock enable
-        TIM5EN OFFSET(3) NUMBITS(1) [],
-        /// TIM6 clock enable
-        TIM6EN OFFSET(4) NUMBITS(1) [],
-        /// TIM7 clock enable
-        TIM7EN OFFSET(5) NUMBITS(1) [],
-        /// TIM12 clock enable
-        TIM12EN OFFSET(6) NUMBITS(1) [],
-        /// TIM13 clock enable
-        TIM13EN OFFSET(7) NUMBITS(1) [],
-        /// TIM14 clock enable
-        TIM14EN OFFSET(8) NUMBITS(1) [],
-        /// Window watchdog clock enable
-        WWDGEN OFFSET(11) NUMBITS(1) [],
-        /// SPI2 clock enable
-        SPI2EN OFFSET(14) NUMBITS(1) [],
-        /// SPI3 clock enable
-        SPI3EN OFFSET(15) NUMBITS(1) [],
-        /// SPDIF-IN clock enable
-        SPDIFEN OFFSET(16) NUMBITS(1) [],
-        /// USART 2 clock enable
-        USART2EN OFFSET(17) NUMBITS(1) [],
-        /// USART3 clock enable
-        USART3EN OFFSET(18) NUMBITS(1) [],
-        /// UART4 clock enable
-        UART4EN OFFSET(19) NUMBITS(1) [],
-        /// UART5 clock enable
-        UART5EN OFFSET(20) NUMBITS(1) [],
-        /// I2C1 clock enable
-        I2C1EN OFFSET(21) NUMBITS(1) [],
-        /// I2C2 clock enable
-        I2C2EN OFFSET(22) NUMBITS(1) [],
+    APB1ENR1 [
+        /// Low power timer 1 clocks enable
+        LPTIM1EN OFFSET(31) NUMBITS(1) [],
+        /// DAC clock enable
+        DACEN OFFSET(29) NUMBITS(1) [],
         /// I2C3 clock enable
         I2C3EN OFFSET(23) NUMBITS(1) [],
-        /// I2CFMP1 clock enable
-        I2CFMP1EN OFFSET(24) NUMBITS(1) [],
-        /// CAN 1 clock enable
-        CAN1EN OFFSET(25) NUMBITS(1) [],
-        /// CAN 2 clock enable
-        CAN2EN OFFSET(26) NUMBITS(1) [],
-        /// CEC interface clock enable
-        CEC OFFSET(27) NUMBITS(1) [],
-        /// Power interface clock enable
-        PWREN OFFSET(28) NUMBITS(1) [],
-        /// DAC interface clock enable
-        DACEN OFFSET(29) NUMBITS(1) []
+        /// I2C2 clock enable
+        I2C2EN OFFSET(22) NUMBITS(1) [],
+        /// I2C1 clock enable
+        I2C1EN OFFSET(21) NUMBITS(1) [],
+        /// USART2 clock enable
+        USART2EN OFFSET(17) NUMBITS(1) [],
+        /// SPI2S2 clock enable
+        SPI2S2EN OFFSET(14) NUMBITS(1) [],
+        /// Window watchdog clock enable
+        WWDGEN OFFSET(11) NUMBITS(1) [],
+        /// RTC APB bus clock enable
+        RTCAPBEN OFFSET(10) NUMBITS(1) [],
+        /// Timer 2 clock enable
+        TIM2EN OFFSET(0) NUMBITS(1) [],
+
+    ],
+    APB1ENR2[
+        /// Low power timer 3 clock enable
+        LPTIM3EN OFFSET(6) NUMBITS(1) [],
+        /// Low power timer 2 clock enable
+        LPTIM2EN OFFSET(5) NUMBITS(1) [],
+        /// Low power UART 1 clock enable
+        LPUART1EN OFFSET(0) NUMBITS(1) [],
     ],
     APB2ENR [
-        /// TIM1 clock enable
-        TIM1EN OFFSET(0) NUMBITS(1) [],
-        /// TIM8 clock enable
-        TIM8EN OFFSET(1) NUMBITS(1) [],
+        /// Timer 17 clock enable
+        TIM17EN OFFSET(18) NUMBITS(1) [],
+        /// Timer 16 clock enable
+        TIM16EN OFFSET(17) NUMBITS(1) [],
         /// USART1 clock enable
-        USART1EN OFFSET(4) NUMBITS(1) [],
-        /// USART6 clock enable
-        USART6EN OFFSET(5) NUMBITS(1) [],
-        /// ADC1 clock enable
-        ADC1EN OFFSET(8) NUMBITS(1) [],
-        /// ADC2 clock enable
-        ADC2EN OFFSET(9) NUMBITS(1) [],
-        /// ADC3 clock enable
-        ADC3EN OFFSET(10) NUMBITS(1) [],
-        /// SDIO clock enable
-        SDIOEN OFFSET(11) NUMBITS(1) [],
+        USART1EN OFFSET(14) NUMBITS(1) [],
         /// SPI1 clock enable
         SPI1EN OFFSET(12) NUMBITS(1) [],
-        /// SPI4 clock enable
-        SPI4ENR OFFSET(13) NUMBITS(1) [],
-        /// System configuration controller clock enable
-        SYSCFGEN OFFSET(14) NUMBITS(1) [],
-        /// TIM9 clock enable
-        TIM9EN OFFSET(16) NUMBITS(1) [],
-        /// TIM10 clock enable
-        TIM10EN OFFSET(17) NUMBITS(1) [],
-        /// TIM11 clock enable
-        TIM11EN OFFSET(18) NUMBITS(1) [],
-        /// SAI1 clock enable
-        SAI1EN OFFSET(22) NUMBITS(1) [],
-        /// SAI2 clock enable
-        SAI2EN OFFSET(23) NUMBITS(1) []
+        /// Timer 1 clock enable
+        TIM1EN OFFSET(11) NUMBITS(1) [],
+        /// ADC clock enable
+        ADCEN OFFSET(9) NUMBITS(1) [],
     ],
-    AHB1LPENR [
-        /// IO port A clock enable during sleep mode
-        GPIOALPEN OFFSET(0) NUMBITS(1) [],
-        /// IO port B clock enable during Sleep mode
-        GPIOBLPEN OFFSET(1) NUMBITS(1) [],
-        /// IO port C clock enable during Sleep mode
-        GPIOCLPEN OFFSET(2) NUMBITS(1) [],
-        /// IO port D clock enable during Sleep mode
-        GPIODLPEN OFFSET(3) NUMBITS(1) [],
-        /// IO port E clock enable during Sleep mode
-        GPIOELPEN OFFSET(4) NUMBITS(1) [],
-        /// IO port F clock enable during Sleep mode
-        GPIOFLPEN OFFSET(5) NUMBITS(1) [],
-        /// IO port G clock enable during Sleep mode
-        GPIOGLPEN OFFSET(6) NUMBITS(1) [],
-        /// IO port H clock enable during Sleep mode
-        GPIOHLPEN OFFSET(7) NUMBITS(1) [],
+    APB3ENR [
+        /// Sub-GHz radio SPI clock enable
+        SUBGHZSPIEN OFFSET(0) NUMBITS(1) [],
+    ],
+    AHB1SMENR [
         /// CRC clock enable during Sleep mode
-        CRCLPEN OFFSET(12) NUMBITS(1) [],
-        /// Flash interface clock enable during Sleep mode
-        FLITFLPEN OFFSET(15) NUMBITS(1) [],
-        /// SRAM 1interface clock enable during Sleep mode
-        SRAM1LPEN OFFSET(16) NUMBITS(1) [],
-        /// SRAM 2 interface clock enable during Sleep mode
-        SRAM2LPEN OFFSET(17) NUMBITS(1) [],
-        /// Backup SRAM interface clock enable during Sleep mode
-        BKPSRAMLPEN OFFSET(18) NUMBITS(1) [],
-        /// DMA1 clock enable during Sleep mode
-        DMA1LPEN OFFSET(21) NUMBITS(1) [],
+        CRCEN OFFSET(12) NUMBITS(1) [],
+        /// DMAMUX1 clock enable during Sleep mode
+        DMAMUX1EN OFFSET(2) NUMBITS(1) [],
         /// DMA2 clock enable during Sleep mode
-        DMA2LPEN OFFSET(22) NUMBITS(1) [],
-        /// USB OTG HS clock enable during Sleep mode
-        OTGHSLPEN OFFSET(29) NUMBITS(1) [],
-        /// USB OTG HS ULPI clock enable during Sleep mode
-        OTGHSULPILPEN OFFSET(30) NUMBITS(1) []
+        DMA2EN OFFSET(1) NUMBITS(1) [],
+        /// DMA1 clock enable during Sleep mode
+        DMA1EN OFFSET(0) NUMBITS(1) [],
     ],
-    AHB2LPENR [
-        /// USB OTG FS clock enable during Sleep mode
-        OTGFSLPEN OFFSET(7) NUMBITS(1) [],
-        /// RNG clock enable during Sleep mode
-        RNGLPEN OFFSET(6) NUMBITS(1) [],
-        /// Camera interface enable during Sleep mode
-        DCMILPEN OFFSET(0) NUMBITS(1) []
+    AHB2SMENR [
+        /// IO port H clock enable during Sleep mode
+        GPIOHEN OFFSET(7) NUMBITS(1) [],
+        /// IO port C clock enable during Sleep mode
+        GPIOCEN OFFSET(2) NUMBITS(1) [],
+        /// IO port B clock enable during Sleep mode
+        GPIOBEN OFFSET(1) NUMBITS(1) [],
+        /// IO port A clock enable during Sleep mode
+        GPIOAEN OFFSET(0) NUMBITS(1) [],
     ],
-    AHB3LPENR [
-        /// Flexible memory controller module clock enable during Sleep mode
-        FMCLPEN OFFSET(0) NUMBITS(1) [],
-        /// QUADSPI memory controller module clock enable during Sleep mode
-        QSPILPEN OFFSET(1) NUMBITS(1) []
+    AHB3SMENR [
+        /// Flash memory interface clock enable during Sleep mode
+        FLASHEN OFFSET(25) NUMBITS(1) [],
+        /// SRAM2 memory interface clock enable during Sleep mode
+        SRAM2SMEN OFFSET(24) NUMBITS(1) [],
+        /// SRAM1 interface clock enble during Sleep mode
+        SRAM1SMEN OFFSET(23) NUMBITS(1) [],
+        /// True RNG clock enable during Sleep mode
+        RNGEN OFFSET(18) NUMBITS(1) [],
+        /// AES hardware accelerator clock enable during Sleep mode
+        AESEN OFFSET(17) NUMBITS(1) [],
+        /// PKA hardware accelerator clock enable during Sleep mode
+        PKAEN OFFSET(16) NUMBITS(1) [],
     ],
-    APB1LPENR [
-        /// TIM2 clock enable during Sleep mode
-        TIM2LPEN OFFSET(0) NUMBITS(1) [],
-        /// TIM3 clock enable during Sleep mode
-        TIM3LPEN OFFSET(1) NUMBITS(1) [],
-        /// TIM4 clock enable during Sleep mode
-        TIM4LPEN OFFSET(2) NUMBITS(1) [],
-        /// TIM5 clock enable during Sleep mode
-        TIM5LPEN OFFSET(3) NUMBITS(1) [],
-        /// TIM6 clock enable during Sleep mode
-        TIM6LPEN OFFSET(4) NUMBITS(1) [],
-        /// TIM7 clock enable during Sleep mode
-        TIM7LPEN OFFSET(5) NUMBITS(1) [],
-        /// TIM12 clock enable during Sleep mode
-        TIM12LPEN OFFSET(6) NUMBITS(1) [],
-        /// TIM13 clock enable during Sleep mode
-        TIM13LPEN OFFSET(7) NUMBITS(1) [],
-        /// TIM14 clock enable during Sleep mode
-        TIM14LPEN OFFSET(8) NUMBITS(1) [],
-        /// Window watchdog clock enable during Sleep mode
-        WWDGLPEN OFFSET(11) NUMBITS(1) [],
-        /// SPI2 clock enable during Sleep mode
-        SPI2LPEN OFFSET(14) NUMBITS(1) [],
-        /// SPI3 clock enable during Sleep mode
-        SPI3LPEN OFFSET(15) NUMBITS(1) [],
-        /// SPDIF clock enable during Sleep mode
-        SPDIFLPEN OFFSET(16) NUMBITS(1) [],
-        /// USART2 clock enable during Sleep mode
-        USART2LPEN OFFSET(17) NUMBITS(1) [],
-        /// USART3 clock enable during Sleep mode
-        USART3LPEN OFFSET(18) NUMBITS(1) [],
-        /// UART4 clock enable during Sleep mode
-        UART4LPEN OFFSET(19) NUMBITS(1) [],
-        /// UART5 clock enable during Sleep mode
-        UART5LPEN OFFSET(20) NUMBITS(1) [],
-        /// I2C1 clock enable during Sleep mode
-        I2C1LPEN OFFSET(21) NUMBITS(1) [],
-        /// I2C2 clock enable during Sleep mode
-        I2C2LPEN OFFSET(22) NUMBITS(1) [],
-        /// I2C3 clock enable during Sleep mode
-        I2C3LPEN OFFSET(23) NUMBITS(1) [],
-        /// I2CFMP1 clock enable during Sleep mode
-        I2CFMP1LPEN OFFSET(24) NUMBITS(1) [],
-        /// CAN 1 clock enable during Sleep mode
-        CAN1LPEN OFFSET(25) NUMBITS(1) [],
-        /// CAN 2 clock enable during Sleep mode
-        CAN2LPEN OFFSET(26) NUMBITS(1) [],
-        /// CEC clock enable during Sleep mode
-        CECLPEN OFFSET(27) NUMBITS(1) [],
-        /// Power interface clock enable during Sleep mode
-        PWRLPEN OFFSET(28) NUMBITS(1) [],
-        /// DAC interface clock enable during Sleep mode
-        DACLPEN OFFSET(29) NUMBITS(1) []
+    APB1SMENR1 [
+        /// Low power timer 1 clock enable during Sleep and Stop modes
+        LPTIM1SMEN OFFSET(31) NUMBITS(1) [],
+        /// DAC clock enable during Sleep and Stop modes
+        DACSMEN OFFSET(29) NUMBITS(1) [],
+        /// I2C3 clock enable during Sleep and Stop modes
+        I2C3SMEN OFFSET(23) NUMBITS(1) [],
+        /// I2C2 clock enable during Sleep and Stop modes
+        I2C2SMEN OFFSET(22) NUMBITS(1) [],
+        /// I2C1 clock enable during Sleep and Stop modes
+        I2C1SMEN OFFSET(21) NUMBITS(1) [],
+        /// USART2 clock enable during Sleep and Stop modes
+        USART2SMEN OFFSET(17) NUMBITS(1) [],
+        /// SPI2S2 clock enable during Sleep and Stop modes
+        SPI2S2SMEN OFFSET(14) NUMBITS(1) [],
+        /// Window watchdog clock enable during Sleep and Stop modes
+        WWDGSMEN OFFSET(11) NUMBITS(1) [],
+        /// RTC APB bus clock enable during Sleep and Stop modes
+        RTCAPBSMEN OFFSET(10) NUMBITS(1) [],
+        /// Timer 2 clock enable during Sleep and Stop modes
+        TIM2SMEN OFFSET(0) NUMBITS(1) [],
     ],
-    APB2LPENR [
-        /// TIM1 clock enable during Sleep mode
-        TIM1LPEN OFFSET(0) NUMBITS(1) [],
-        /// TIM8 clock enable during Sleep mode
-        TIM8LPEN OFFSET(1) NUMBITS(1) [],
-        /// USART1 clock enable during Sleep mode
-        USART1LPEN OFFSET(4) NUMBITS(1) [],
-        /// USART6 clock enable during Sleep mode
-        USART6LPEN OFFSET(5) NUMBITS(1) [],
-        /// ADC1 clock enable during Sleep mode
-        ADC1LPEN OFFSET(8) NUMBITS(1) [],
-        /// ADC2 clock enable during Sleep mode
-        ADC2LPEN OFFSET(9) NUMBITS(1) [],
-        /// ADC 3 clock enable during Sleep mode
-        ADC3LPEN OFFSET(10) NUMBITS(1) [],
-        /// SDIO clock enable during Sleep mode
-        SDIOLPEN OFFSET(11) NUMBITS(1) [],
-        /// SPI 1 clock enable during Sleep mode
-        SPI1LPEN OFFSET(12) NUMBITS(1) [],
-        /// SPI 4 clock enable during Sleep mode
-        SPI4LPEN OFFSET(13) NUMBITS(1) [],
-        /// System configuration controller clock enable during Sleep mode
-        SYSCFGLPEN OFFSET(14) NUMBITS(1) [],
-        /// TIM9 clock enable during sleep mode
-        TIM9LPEN OFFSET(16) NUMBITS(1) [],
-        /// TIM10 clock enable during Sleep mode
-        TIM10LPEN OFFSET(17) NUMBITS(1) [],
-        /// TIM11 clock enable during Sleep mode
-        TIM11LPEN OFFSET(18) NUMBITS(1) [],
-        /// SAI1 clock enable
-        SAI1LPEN OFFSET(22) NUMBITS(1) [],
-        /// SAI2 clock enable
-        SAI2LPEN OFFSET(23) NUMBITS(1) []
+    APB1SMENR2 [
+        /// Low power timer 3 clock enable during Sleep and Stop modes
+        LPTIM3SMEN OFFSET(6) NUMBITS(1) [],
+        /// Low power timer 2 clock enable during Sleep and Stop modes
+        LPTIM2SMEN OFFSET(5) NUMBITS(1) [],
+        /// Low power UART 1 clock enable during Sleep and Stop modes
+        LPUART1SMEN OFFSET(0) NUMBITS(1) [],
+    ],
+    APB2SMENR [
+        /// Timer 17 clock enable during Sleep and Stop modes
+        TIM17SMEN OFFSET(18) NUMBITS(1) [],
+        /// Timer 16 clock enable during Sleep and Stop modes
+        TIM16SMEN OFFSET(17) NUMBITS(1) [],
+        /// USART1 clock enable during Sleep and Stop modes
+        USART1SMEN OFFSET(14) NUMBITS(1) [],
+        /// SPI1 clock enable during Sleep and Stop modes
+        SPI1SMEN OFFSET(12) NUMBITS(1) [],
+        /// Timer 1 clock enable during Sleep and Stop modes
+        TIM1SMEN OFFSET(11) NUMBITS(1) [],
+        /// ADC clock enable during Sleep and Stop modes
+        ADCSMEN OFFSET(9) NUMBITS(1) [],
+    ],
+    APB3SMENR [
+        /// Sub-GHz radio SPI clock enable during Sleep and Stop modes
+        SUBGHZSPISMEN OFFSET(0) NUMBITS(1) [],
+    ],
+    CCIPR [
+        /// RNG clock source selection
+        RNGSEL OFFSET(30) NUMBITS(2) [
+            PLLQ = 0b00,
+            LSI = 0b01,
+            LSE = 0b10,
+            MSI = 0b11,
+        ],
+        /// ADC clock source selection
+        ADCSEL OFFSET(28) NUMBITS(2) [
+            None = 0b00,
+            HSI = 0b01,
+            PLLP = 0b10,
+            SYSCLK = 0b11,
+        ],
+        /// Low-power timer 3 clock source selection
+        LPTIM3SEL OFFSET(22) NUMBITS(2) [
+            PCLK = 0b00,
+            LSI = 0b01,
+            HSI16 = 0b10,
+            LSE = 0b11,
+        ],
+        /// Low-power timer 2 clock source selection
+        LPTIM2SEL OFFSET(20) NUMBITS(2) [
+            PCLK = 0b00,
+            LSI = 0b01,
+            HSI16 = 0b10,
+            LSE = 0b11,
+        ],
+        /// Low-power timer 1 clock source selection
+        LPTIM1SEL OFFSET(18) NUMBITS(2) [
+            PCLK = 0b00,
+            LSI = 0b01,
+            HSI16 = 0b10,
+            LSE = 0b11,
+        ],
+        /// I2C3 clock source selection
+        I2C3SEL OFFSET(16) NUMBITS(2) [
+            PCLK = 0b00,
+            SYSCLK = 0b01,
+            HSI16 = 0b10,
+        ],
+        /// I2C2 clock source selection
+        I2C2SEL OFFSET(14) NUMBITS(2) [
+            PCLK = 0b00,
+            SYSCLK = 0b01,
+            HSI16 = 0b10,
+        ],
+        /// I2C1 clock source selection
+        I2C1SEL OFFSET(12) NUMBITS(2) [
+            PCLK = 0b00,
+            SYSCLK = 0b01,
+            HSI16 = 0b10,
+        ],
+        /// LPUART1 clock source selection
+        LPUART1SEL OFFSET(10) NUMBITS(2) [
+            PCLK = 0b00,
+            SYSCLK = 0b01,
+            HSI16 = 0b10,
+            LSE = 0b11,
+        ],
+        /// SPI2S2 I@S clock source selection
+        SPI2S2SEL OFFSET(8) NUMBITS(2) [
+            PLLQ = 0b01,
+            HSI16 = 0b10,
+            I2S_CKIN = 0b11,
+        ],
+        /// USART2 clock source selection
+        USART2SEL OFFSET(2) NUMBITS(2) [
+            PCLK = 0b00,
+            SYSCLK = 0b01,
+            HSI16 = 0b10,
+            LSE = 0b11,
+        ],
+        /// USART1 clock source selection
+        USART1SEL OFFSET(0) NUMBITS(2) [
+            PCLK = 0b00,
+            SYSCLK = 0b01,
+            HSI16 = 0b10,
+            LSE = 0b11,
+        ],
     ],
     BDCR [
+        /// Low-speed clock output selection
+        LSCOSEL OFFSET(25) NUMBITS(1) [
+            LSI = 0,
+            LSE = 1,
+        ],
+        /// Low-speed clock output enable
+        LSCOEN OFFSET(24) NUMBITS(1) [],
         /// Backup domain software reset
         BDRST OFFSET(16) NUMBITS(1) [],
-        /// RTC clock enable
+        /// RTC kernel clock enable
         RTCEN OFFSET(15) NUMBITS(1) [],
+        /// LSE system clock ready
+        LSESYSRDY OFFSET(11) NUMBITS(1) [],
         /// RTC clock source selection
-        RTCSEL OFFSET(8) NUMBITS(2) [],
-        /// External low-speed oscillator mode
-        LSEMOD OFFSET(3) NUMBITS(1) [],
-        /// External low-speed oscillator bypass
+        RTCSEL OFFSET(8) NUMBITS(2) [
+            None = 0b00,
+            LSE = 0b01,
+            LSI = 0b10,
+            HSE32 = 0b11,
+        ],
+        /// LSE system clock enable
+        LSESYSEN OFFSET(7) NUMBITS(1) [],
+        /// CSS on LSE failure detection
+        LSECSSD OFFSET(6) NUMBITS(1) [],
+        /// CSS on LSE enable
+        LSECSSON OFFSET(5) NUMBITS(1) [],
+        /// LSE oscillator drive capability
+        LSEDRV OFFSET(3) NUMBITS(2) [
+            Low = 0b00,
+            MediumLow = 0b01,
+            MediumHigh = 0b10,
+            High = 0b11,
+        ],
+        /// LSE oscillator bypass
         LSEBYP OFFSET(2) NUMBITS(1) [],
-        /// External low-speed oscillator ready
+        /// LSE oscillator ready
         LSERDY OFFSET(1) NUMBITS(1) [],
-        /// External low-speed oscillator enable
-        LSEON OFFSET(0) NUMBITS(1) []
+        /// LSE oscillator enable
+        LSEON OFFSET(0) NUMBITS(1) [],
     ],
     CSR [
         /// Low-power reset flag
-        LPWRRSTF OFFSET(31) NUMBITS(1) [],
+        LPWRSTF OFFSET(31) NUMBITS(1) [],
         /// Window watchdog reset flag
         WWDGRSTF OFFSET(30) NUMBITS(1) [],
-        /// Independent watchdog reset flag
-        WDGRSTF OFFSET(29) NUMBITS(1) [],
+        /// Independent window watchdog reset flag
+        IWWDGRSTF OFFSET(29) NUMBITS(1) [],
         /// Software reset flag
         SFTRSTF OFFSET(28) NUMBITS(1) [],
-        /// POR/PDR reset flag
-        PORRSTF OFFSET(27) NUMBITS(1) [],
-        /// PIN reset flag
-        PADRSTF OFFSET(26) NUMBITS(1) [],
         /// BOR reset flag
-        BORRSTF OFFSET(25) NUMBITS(1) [],
+        BORRSTF OFFSET(27) NUMBITS(1) [],
+        /// Pin reset flag
+        PINRSTF OFFSET(26) NUMBITS(1) [],
+        /// Option byte loader reset flag
+        OBLRSTF OFFSET(25) NUMBITS(1) [],
+        /// Sub-GHz radio illegal command flag
+        SUBGHZSPICF OFFSET(24) NUMBITS(1) [],
         /// Remove reset flag
-        RMVF OFFSET(24) NUMBITS(1) [],
-        /// Internal low-speed oscillator ready
+        RMVF OFFSET(23) NUMBITS(1) [],
+        /// Sub-GHz radio reset
+        RFRST OFFSET(15) NUMBITS(1) [],
+        /// Sub-GHz radio in reset status flag
+        RFRSTF OFFSET(14) NUMBITS(1) [],
+        /// MSI clock ranges
+        MSISRANGE OFFSET(8) NUMBITS(4) [
+            Range4 = 0b100,
+            Range5 = 0b101,
+            Range6 = 0b110,
+            Range7 = 0b111,
+        ],
+        /// LSI frequency prescaler
+        LSIPRE OFFSET(4) NUMBITS(1) [],
+        /// LSI oscillator ready
         LSIRDY OFFSET(1) NUMBITS(1) [],
-        /// Internal low-speed oscillator enable
-        LSION OFFSET(0) NUMBITS(1) []
+        /// LSI oscillator enable
+        LSION OFFSET(0) NUMBITS(1) [],
+
     ],
-    SSCGR [
-        /// Spread spectrum modulation enable
-        SSCGEN OFFSET(31) NUMBITS(1) [],
-        /// Spread Select
-        SPREADSEL OFFSET(30) NUMBITS(1) [],
-        /// Incrementation step
-        INCSTEP OFFSET(13) NUMBITS(15) [],
-        /// Modulation period
-        MODPER OFFSET(0) NUMBITS(13) []
+    EXTCFGR [
+        /// HCLK3 shared prescaler flag (AHB3, Flash, and SRAM1/2)
+        SHDHPREF OFFSET(16) NUMBITS(1) [],
+        /// HCLK3 shared prescaler (AHB3, Flash, and SRAM1/2)
+        SHDHPRE OFFSET(0) NUMBITS(4) [
+        ],
     ],
-    PLLI2SCFGR [
-        /// Division factor for audio PLL (PLLI2S) input clock
-        PLLI2SM OFFSET(0) NUMBITS(6) [],
-        /// PLLI2S multiplication factor for VCO
-        PLLI2SN OFFSET(6) NUMBITS(9) [],
-        /// PLLI2S division factor for SPDIF-IN clock
-        PLLI2SP OFFSET(16) NUMBITS(2) [],
-        /// PLLI2S division factor for SAI1 clock
-        PLLI2SQ OFFSET(24) NUMBITS(4) [],
-        /// PLLI2S division factor for I2S clocks
-        PLLI2SR OFFSET(28) NUMBITS(3) []
-    ],
-    PLLSAICFGR [
-        /// Division factor for audio PLLSAI input clock
-        PLLSAIM OFFSET(0) NUMBITS(6) [],
-        /// PLLSAI division factor for VCO
-        PLLSAIN OFFSET(6) NUMBITS(9) [],
-        /// PLLSAI division factor for 48 MHz clock
-        PLLSAIP OFFSET(16) NUMBITS(2) [],
-        /// PLLSAI division factor for SAIs clock
-        PLLSAIQ OFFSET(24) NUMBITS(4) []
-    ],
-    DCKCFGR [
-        /// PLLI2S division factor for SAIs clock
-        PLLI2SDIVQ OFFSET(0) NUMBITS(5) [],
-        /// PLLSAI division factor for SAIs clock
-        PLLSAIDIVQ OFFSET(8) NUMBITS(5) [],
-        /// SAI1 clock source selection
-        SAI1SRC OFFSET(20) NUMBITS(2) [],
-        /// SAI2 clock source selection
-        SAI2SRC OFFSET(22) NUMBITS(2) [],
-        /// Timers clocks prescalers selection
-        TIMPRE OFFSET(24) NUMBITS(1) [],
-        /// I2S APB1 clock source selection
-        I2S1SRC OFFSET(25) NUMBITS(2) [],
-        /// I2S APB2 clock source selection
-        I2S2SRC OFFSET(27) NUMBITS(2) []
-    ],
-    CKGATENR [
-        /// AHB to APB1 Bridge clock enable
-        AHB2APB1_CKEN OFFSET(0) NUMBITS(1) [],
-        /// AHB to APB2 Bridge clock enable
-        AHB2APB2_CKEN OFFSET(1) NUMBITS(1) [],
-        /// Cortex M4 ETM clock enable
-        CM4DBG_CKEN OFFSET(2) NUMBITS(1) [],
-        /// Spare clock enable
-        SPARE_CKEN OFFSET(3) NUMBITS(1) [],
-        /// SRQAM controller clock enable
-        SRAM_CKEN OFFSET(4) NUMBITS(1) [],
-        /// Flash Interface clock enable
-        FLITF_CKEN OFFSET(5) NUMBITS(1) [],
-        /// RCC clock enable
-        RCC_CKEN OFFSET(6) NUMBITS(1) []
-    ],
-    DCKCFGR2 [
-        /// I2C4 kernel clock source selection
-        FMPI2C1SEL OFFSET(22) NUMBITS(2) [],
-        /// HDMI CEC clock source selection
-        CECSEL OFFSET(26) NUMBITS(1) [],
-        /// SDIO/USBFS/HS clock selection
-        CK48MSEL OFFSET(27) NUMBITS(1) [],
-        /// SDIO clock selection
-        SDIOSEL OFFSET(28) NUMBITS(1) [],
-        /// SPDIF clock selection
-        SPDIFSEL OFFSET(29) NUMBITS(1) []
-    ]
 ];
 
 const RCC_BASE: StaticRef<RccRegisters> =
-    unsafe { StaticRef::new(0x40023800 as *const RccRegisters) };
+    unsafe { StaticRef::new(0x58000000 as *const RccRegisters) };
 
 // Default values when the hardware is reset. Uncomment if you need them.
 //pub(crate) const RESET_PLLM_VALUE: usize = PLLM::DivideBy16; // M = 16
@@ -776,8 +800,9 @@ impl Rcc {
     // Get the current system clock source
     pub(crate) fn get_sys_clock_source(&self) -> SysClockSource {
         match self.registers.cfgr.read(CFGR::SWS) {
-            0b00 => SysClockSource::HSI,
-            0b01 => SysClockSource::HSE,
+            0b00 => SysClockSource::MSI,
+            0b01 => SysClockSource::HSI,
+            0b10 => SysClockSource::HSE,
             _ => SysClockSource::PLL,
             // Uncomment this when PPLLR support is added. Also change the above match arm to
             // 0b10 => SysClockSource::PLL,
@@ -792,6 +817,13 @@ impl Rcc {
         self.registers.cfgr.modify(CFGR::SW.val(source as u32));
     }
 
+    pub(crate) fn is_msi_clock_system_clock(&self) -> bool {
+        let system_clock_source = self.get_sys_clock_source();
+        system_clock_source == SysClockSource::MSI
+            || system_clock_source == SysClockSource::PLL
+                && self.registers.pllcfgr.read(PLLCFGR::PLLSRC) == PllSource::MSI as u32
+    }
+
     pub(crate) fn is_hsi_clock_system_clock(&self) -> bool {
         let system_clock_source = self.get_sys_clock_source();
         system_clock_source == SysClockSource::HSI
@@ -804,6 +836,23 @@ impl Rcc {
         system_clock_source == SysClockSource::HSE
             || system_clock_source == SysClockSource::PLL
                 && self.registers.pllcfgr.read(PLLCFGR::PLLSRC) == PllSource::HSE as u32
+    }
+
+    /* MSI close */
+    pub(crate) fn disable_msi_clock(&self) {
+        self.registers.cr.modify(CR::MSION::CLEAR);
+    }
+
+    pub(crate) fn enable_msi_clock(&self) {
+        self.registers.cr.modify(CR::MSION::SET);
+    }
+
+    pub(crate) fn is_enabled_msi_clock(&self) -> bool {
+        self.registers.cr.is_set(CR::MSION)
+    }
+
+    pub(crate) fn is_ready_msi_clock(&self) -> bool {
+        self.registers.cr.is_set(CR::MSIRDY)
     }
 
     /* HSI clock */
@@ -828,11 +877,11 @@ impl Rcc {
     /* HSE clock */
     pub(crate) fn disable_hse_clock(&self) {
         self.registers.cr.modify(CR::HSEON::CLEAR);
-        self.registers.cr.modify(CR::HSEBYP::CLEAR);
+        self.registers.cr.modify(CR::HSEBYPPWR::CLEAR);
     }
 
     pub(crate) fn enable_hse_clock_bypass(&self) {
-        self.registers.cr.modify(CR::HSEBYP::SET);
+        self.registers.cr.modify(CR::HSEBYPPWR::SET);
     }
 
     pub(crate) fn enable_hse_clock(&self) {
@@ -1450,16 +1499,16 @@ pub(crate) enum PLLQ {
 /// Clock sources for the CPU
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum SysClockSource {
-    HSI = 0b00,
-    HSE = 0b01,
-    PLL = 0b10,
-    // NOTE: not all STM32F4xx boards support this source.
-    //PPLLR = 0b11, Uncomment this when support for PPLLR is added
+    MSI = 0b00,
+    HSI = 0b01,
+    HSE = 0b10,
+    PLL = 0b11,
 }
 
 pub enum PllSource {
-    HSI = 0b0,
-    HSE = 0b1,
+    MSI = 0b01,
+    HSI = 0b10,
+    HSE = 0b11,
 }
 
 pub enum MCO1Source {

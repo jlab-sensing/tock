@@ -158,6 +158,7 @@ use crate::chip_specific::ChipSpecs as ChipSpecsTrait;
 use crate::clocks::hse::Hse;
 use crate::clocks::hsi::Hsi;
 use crate::clocks::hsi::HSI_FREQUENCY_MHZ;
+use crate::clocks::msi::Msi;
 use crate::clocks::pll::Pll;
 
 // use crate::flash::Flash;
@@ -173,10 +174,14 @@ use kernel::debug;
 use kernel::utilities::cells::OptionalCell;
 use kernel::ErrorCode;
 
+use super::msi::MSI_FREQUENCY_MHZ;
+
 /// Main struct for configuring on-board clocks.
 pub struct Clocks<'a, ChipSpecs> {
     rcc: &'a Rcc,
     // flash: OptionalCell<&'a Flash<ChipSpecs>>,
+    /// MSI - TODO ADD DOCUMENTATION
+    pub msi: Msi<'a>,
     /// High speed internal clock
     pub hsi: Hsi<'a>,
     /// High speed external clock
@@ -191,6 +196,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
         Self {
             rcc,
             // flash: OptionalCell::empty(),
+            msi: Msi::new(rcc),
             hsi: Hsi::new(rcc),
             hse: Hse::new(rcc),
             pll: Pll::new(rcc),
@@ -356,6 +362,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
 
         // Ensure the source is enabled before configuring it as the system clock source
         if let false = match source {
+            SysClockSource::MSI => self.msi.is_enabled(),
             SysClockSource::HSI => self.hsi.is_enabled(),
             SysClockSource::HSE => self.hse.is_enabled(),
             SysClockSource::PLL => self.pll.is_enabled(),
@@ -368,6 +375,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
         // Get the frequency of the source to be configured
         let alternate_frequency = match source {
             // The unwrap can't fail because the source clock status was checked before
+            SysClockSource::MSI => self.msi.get_frequency_mhz().unwrap(),
             SysClockSource::HSI => self.hsi.get_frequency_mhz().unwrap(),
             SysClockSource::HSE => self.hse.get_frequency_mhz().unwrap(),
             SysClockSource::PLL => self.pll.get_frequency_mhz().unwrap(),
@@ -427,6 +435,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
             // These unwraps can't panic because set_sys_clock_frequency ensures that the source is
             // enabled. Also, Hsi and Pll structs ensure that the clocks can't be disabled when
             // they are configured as the system clock
+            SysClockSource::MSI => self.msi.get_frequency_mhz().unwrap(),
             SysClockSource::HSI => self.hsi.get_frequency_mhz().unwrap(),
             SysClockSource::HSE => self.hse.get_frequency_mhz().unwrap(),
             SysClockSource::PLL => self.pll.get_frequency_mhz().unwrap(),
@@ -440,10 +449,12 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
             // These unwraps can't panic because set_sys_clock_frequency ensures that the source is
             // enabled. Also, Hsi and Pll structs ensure that the clocks can't be disabled when
             // they are configured as the system clock
+            SysClockSource::MSI => self.msi.get_frequency_mhz().unwrap(),
             SysClockSource::HSI => self.hsi.get_frequency_mhz().unwrap(),
             SysClockSource::HSE => self.hse.get_frequency_mhz().unwrap(),
             SysClockSource::PLL => {
                 let pll_source_frequency = match self.rcc.get_pll_clocks_source() {
+                    PllSource::MSI => self.msi.get_frequency_mhz().unwrap(),
                     PllSource::HSI => self.hsi.get_frequency_mhz().unwrap(),
                     PllSource::HSE => self.hse.get_frequency_mhz().unwrap(),
                 };
@@ -458,7 +469,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
     ///
     /// # Parameters
     ///
-    /// + pll_source: PLL source clock (HSI or HSE)
+    /// + pll_source: PLL source clock (HSI or HSE or MSI)
     ///
     /// + desired_frequency_mhz: the desired frequency in MHz. Supported values: 24-216MHz for
     /// STM32F401 and 13-216MHz for all the other chips
@@ -473,6 +484,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
         desired_frequency_mhz: usize,
     ) -> Result<(), ErrorCode> {
         let source_frequency = match pll_source {
+            PllSource::MSI => self.msi.get_frequency_mhz().unwrap(),
             PllSource::HSI => HSI_FREQUENCY_MHZ,
             PllSource::HSE => self.hse.get_frequency_mhz().unwrap(),
         };
