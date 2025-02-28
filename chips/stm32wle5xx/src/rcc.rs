@@ -5,6 +5,7 @@
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::registers::{register_bitfields, ReadWrite};
 use kernel::utilities::StaticRef;
+use CCIPR::ADCSEL::PLLP;
 
 /// Reset and clock control
 #[repr(C)]
@@ -18,7 +19,7 @@ struct RccRegisters {
     pllcfgr: ReadWrite<u32, PLLCFGR::Register>,
     _reserved0: [u8; 8],
     cier: ReadWrite<u32, CIER::Register>,
-    cifgr: ReadWrite<u32, CIFGR::Register>,
+    cifgr: ReadWrite<u32, CIFR::Register>,
     cicr: ReadWrite<u32, CICR::Register>,
     _reserved1: [u8; 4],
     /// AHB1 peripheral reset register
@@ -29,7 +30,7 @@ struct RccRegisters {
     ahb3rstr: ReadWrite<u32, AHB3RSTR::Register>,
     _reserved2: [u8; 4],
     /// APB1 peripheral reset register 1
-    apb1rstr1: ReadWrite<u32, APB1RSTR::Register>,
+    apb1rstr1: ReadWrite<u32, APB1RSTR1::Register>,
     apb1rstr2: ReadWrite<u32, APB1RSTR2::Register>,
     /// APB2 peripheral reset register
     apb2rstr: ReadWrite<u32, APB2RSTR::Register>,
@@ -42,7 +43,7 @@ struct RccRegisters {
     ahb3enr: ReadWrite<u32, AHB3ENR::Register>,
     _reserved3: [u8; 4],
     /// APB1 peripheral clock enable register 1
-    apb1enr1: ReadWrite<u32, APB1ENR::Register>,
+    apb1enr1: ReadWrite<u32, APB1ENR1::Register>,
     apb1enr2: ReadWrite<u32, APB1ENR2::Register>,
     /// APB2 peripheral clock enable register
     apb2enr: ReadWrite<u32, APB2ENR::Register>,
@@ -51,7 +52,7 @@ struct RccRegisters {
     ahb2smenr: ReadWrite<u32, AHB2SMENR::Register>,
     ahb3smenr: ReadWrite<u32, AHB3SMENR::Register>,
     _reserved4: [u8; 4],
-    apb1smenr1: ReadWrite<u32, APB1SMENR::Register>,
+    apb1smenr1: ReadWrite<u32, APB1SMENR1::Register>,
     apb1smenr2: ReadWrite<u32, APB1SMENR2::Register>,
     apb2smenr: ReadWrite<u32, APB2SMENR::Register>,
     apb3smenr: ReadWrite<u32, APB3SMENR::Register>,
@@ -730,34 +731,13 @@ register_bitfields![u32,
 const RCC_BASE: StaticRef<RccRegisters> =
     unsafe { StaticRef::new(0x58000000 as *const RccRegisters) };
 
-// Default values when the hardware is reset. Uncomment if you need them.
-//pub(crate) const RESET_PLLM_VALUE: usize = PLLM::DivideBy16; // M = 16
-//pub(crate) const RESET_PLLP_VALUE: PLLP = PLLP::DivideBy2; // P = 2
-//pub(crate) const RESET_PLLQ_VALUE: PLLQ = PLLQ::DivideBy4; // Q = 4
-pub(crate) const RESET_PLLN_VALUE: usize = 0b011_000_000; // N = 192
-
-// Default PLL configuration. See Rcc::init_pll_clock() for more details.
-//
-// Choose PLLM::DivideBy8 for reduced PLL jitter or PLLM::DivideBy16 for default hardware
-// configuration
-pub(crate) const DEFAULT_PLLM_VALUE: PLLM = PLLM::DivideBy8;
-// DON'T CHANGE THIS VALUE
-pub(crate) const DEFAULT_PLLN_VALUE: usize = RESET_PLLN_VALUE;
-// Dynamically computing the default PLLP value based on the PLLM value
-pub(crate) const DEFAULT_PLLP_VALUE: PLLP = match DEFAULT_PLLM_VALUE {
-    PLLM::DivideBy16 => PLLP::DivideBy2,
-    PLLM::DivideBy8 => PLLP::DivideBy4,
-};
-// Dynamically computing the default PLLQ value based on the PLLM value
-pub(crate) const DEFAULT_PLLQ_VALUE: PLLQ = match DEFAULT_PLLM_VALUE {
-    PLLM::DivideBy16 => PLLQ::DivideBy4,
-    PLLM::DivideBy8 => PLLQ::DivideBy8,
-};
+pub(crate) const PLLN_MULTIPLY_28: usize = 28;
 
 pub struct Rcc {
     registers: StaticRef<RccRegisters>,
 }
 
+// TODO: Is this correct?
 pub enum RtcClockSource {
     LSI,
     LSE,
@@ -778,38 +758,46 @@ impl Rcc {
         self.init_pll_clock();
     }
 
-    // Init the PLL clock. The default configuration:
-    // + if DEFAULT_PLLM_VALUE == PLLM::DivideBy8:
-    //   + 2MHz VCO input frequency for reduced PLL jitter: freq_VCO_input = freq_source / PLLM
-    //   + 384MHz VCO output frequency: freq_VCO_output = freq_VCO_input * PLLN
-    //   + 96MHz main output frequency: freq_PLL = freq_VCO_output / PLLP
-    //   + 48MHz PLL48CLK output frequency: freq_PLL48CLK = freq_VCO_output / PLLQ
-    // + if DEFAULT_PLLM_VALUE == PLLM::DivideBy16: (default hardware configuration)
-    //   + 1MHz VCO input frequency for reduced PLL jitter: freq_VCO_input = freq_source / PLLM
-    //   + 384MHz VCO output frequency: freq_VCO_output = freq_VCO_input * PLLN
-    //   + 96MHz main output frequency: freq_PLL = freq_VCO_output / PLLP
-    //   + 48MHz PLL48CLK output frequency: freq_PLL48CLK = freq_VCO_output / PLLQ
+    // Init the PLL clock.
+    // CONSTRAINTS:
+    //  - f(VCO) must be between 96 and 344 MHz
+    //  - PLL input frequency must be between 2.66 and 16 MHz
+    //  - PLLQ & PLLR frequency must not exceed 48 MHz
+    //  - PLLP frequency must not exceed 62 MHz
+    //  - PLLN multipler must be between 6 and 127
+    // FORMULAS:
+    //  - f(PLL)       = f(PLL clock input) / PLLM
+    //  - f(VCO clock) = f(PLL clock input) x (PLLN / PLLM)
+    //  - f(PLL_P)     = f(VCO clock) / PLLP
+    //  - f(PLL_Q)     = f(VCO clock) / PLLQ
+    //  - f(PLL_R)     = f(VCO clock) / PLLR
+    // CONFIGURATION:
+    //   + CLOCK SRC: HSI16
+    //   + PLLM: DivideBy2
+    //   + 8MHz PLL input frequency: 16 MHz / PLLM (PLLM=2)
+    //   + 224MHz VCO output frequency: (8MHz) X PLLN (PLLN=28)
+    //   + 28MHz freq_PLLQ & freq_PLLR & freq_PLLP: (224 MHz) / PLLQ (PLLQ=PLLR=8)
     fn init_pll_clock(&self) {
         self.set_pll_clocks_source(PllSource::HSI);
-        self.set_pll_clocks_m_divider(DEFAULT_PLLM_VALUE);
-        self.set_pll_clock_n_multiplier(DEFAULT_PLLN_VALUE);
-        self.set_pll_clock_p_divider(DEFAULT_PLLP_VALUE);
-        self.set_pll_clock_q_divider(DEFAULT_PLLQ_VALUE);
+        self.set_pll_clocks_m_divider(PLLMDivider::DivideBy2);
+        self.set_pll_clock_n_multiplier(PLLN_MULTIPLY_28);
+        self.set_pll_clock_p_divider(PLLPDivider::DivideBy8);
+        self.set_pll_clock_q_divider(PLLQDivider::DivideBy8);
+        self.set_pll_clock_r_divider(PLLRDivider::DivideBy8);
     }
 
+    // CHECKED [x]
     // Get the current system clock source
     pub(crate) fn get_sys_clock_source(&self) -> SysClockSource {
         match self.registers.cfgr.read(CFGR::SWS) {
             0b00 => SysClockSource::MSI,
             0b01 => SysClockSource::HSI,
             0b10 => SysClockSource::HSE,
-            _ => SysClockSource::PLL,
-            // Uncomment this when PPLLR support is added. Also change the above match arm to
-            // 0b10 => SysClockSource::PLL,
-            //_ => SysClockSource::PPLLR,
+            _ => SysClockSource::PLLR,
         }
     }
 
+    // CHECKED [x]
     // Set the system clock source
     // The source must be enabled
     // NOTE: The flash latency also needs to be configured when changing the system clock frequency
@@ -817,64 +805,76 @@ impl Rcc {
         self.registers.cfgr.modify(CFGR::SW.val(source as u32));
     }
 
+    // CHECKED [x]
     pub(crate) fn is_msi_clock_system_clock(&self) -> bool {
         let system_clock_source = self.get_sys_clock_source();
         system_clock_source == SysClockSource::MSI
-            || system_clock_source == SysClockSource::PLL
+            || system_clock_source == SysClockSource::PLLR
                 && self.registers.pllcfgr.read(PLLCFGR::PLLSRC) == PllSource::MSI as u32
     }
 
+    // CHECKED [x]
     pub(crate) fn is_hsi_clock_system_clock(&self) -> bool {
         let system_clock_source = self.get_sys_clock_source();
         system_clock_source == SysClockSource::HSI
-            || system_clock_source == SysClockSource::PLL
+            || system_clock_source == SysClockSource::PLLR
                 && self.registers.pllcfgr.read(PLLCFGR::PLLSRC) == PllSource::HSI as u32
     }
 
+    // CHECKED [x]
     pub(crate) fn is_hse_clock_system_clock(&self) -> bool {
         let system_clock_source = self.get_sys_clock_source();
         system_clock_source == SysClockSource::HSE
-            || system_clock_source == SysClockSource::PLL
+            || system_clock_source == SysClockSource::PLLR
                 && self.registers.pllcfgr.read(PLLCFGR::PLLSRC) == PllSource::HSE as u32
     }
 
+    // CHECKED [x]
     /* MSI close */
     pub(crate) fn disable_msi_clock(&self) {
         self.registers.cr.modify(CR::MSION::CLEAR);
     }
 
+    // CHECKED [x]
     pub(crate) fn enable_msi_clock(&self) {
         self.registers.cr.modify(CR::MSION::SET);
     }
 
+    // CHECKED [x]
     pub(crate) fn is_enabled_msi_clock(&self) -> bool {
         self.registers.cr.is_set(CR::MSION)
     }
 
+    // CHECKED [x]
     pub(crate) fn is_ready_msi_clock(&self) -> bool {
         self.registers.cr.is_set(CR::MSIRDY)
     }
 
     /* HSI clock */
+    // CHECKED [x]
     // The HSI clock must not be configured as the system clock, either directly or indirectly.
     pub(crate) fn disable_hsi_clock(&self) {
         self.registers.cr.modify(CR::HSION::CLEAR);
     }
 
+    // CHECKED [x]
     pub(crate) fn enable_hsi_clock(&self) {
         self.registers.cr.modify(CR::HSION::SET);
     }
 
+    // CHECKED [x]
     pub(crate) fn is_enabled_hsi_clock(&self) -> bool {
         self.registers.cr.is_set(CR::HSION)
     }
 
     // Indicates whether the HSI oscillator is stable
+    // CHECKED [x]
     pub(crate) fn is_ready_hsi_clock(&self) -> bool {
         self.registers.cr.is_set(CR::HSIRDY)
     }
 
     /* HSE clock */
+    // CHECKED [x]
     pub(crate) fn disable_hse_clock(&self) {
         self.registers.cr.modify(CR::HSEON::CLEAR);
         self.registers.cr.modify(CR::HSEBYPPWR::CLEAR);
@@ -919,8 +919,11 @@ impl Rcc {
 
     pub(crate) fn get_pll_clocks_source(&self) -> PllSource {
         match self.registers.pllcfgr.read(PLLCFGR::PLLSRC) {
-            0b0 => PllSource::HSI,
-            _ => PllSource::HSE,
+            0b0 => PllSource::None,
+            0b01 => PllSource::MSI,
+            0b10 => PllSource::HSI,
+            0b11 => PllSource::HSE,
+            _ => unreachable!(),
         }
     }
 
@@ -931,16 +934,22 @@ impl Rcc {
             .modify(PLLCFGR::PLLSRC.val(source as u32));
     }
 
-    pub(crate) fn get_pll_clocks_m_divider(&self) -> PLLM {
+    pub(crate) fn get_pll_clocks_m_divider(&self) -> PLLMDivider {
         match self.registers.pllcfgr.read(PLLCFGR::PLLM) {
-            8 => PLLM::DivideBy8,
-            16 => PLLM::DivideBy16,
-            _ => panic!("Unexpected PLLM divider"),
+            0b000 => PLLMDivider::DivideBy1,
+            0b001 => PLLMDivider::DivideBy2,
+            0b010 => PLLMDivider::DivideBy3,
+            0b011 => PLLMDivider::DivideBy4,
+            0b100 => PLLMDivider::DivideBy5,
+            0b101 => PLLMDivider::DivideBy6,
+            0b110 => PLLMDivider::DivideBy7,
+            0b111 => PLLMDivider::DivideBy8,
+            _ => unreachable!(),
         }
     }
 
     // This method must be called only when all PLL clocks are disabled
-    pub(crate) fn set_pll_clocks_m_divider(&self, m: PLLM) {
+    pub(crate) fn set_pll_clocks_m_divider(&self, m: PLLMDivider) {
         self.registers.pllcfgr.modify(PLLCFGR::PLLM.val(m as u32));
     }
 
@@ -953,36 +962,72 @@ impl Rcc {
         self.registers.pllcfgr.modify(PLLCFGR::PLLN.val(n as u32));
     }
 
-    pub(crate) fn get_pll_clock_p_divider(&self) -> PLLP {
-        match self.registers.pllcfgr.read(PLLCFGR::PLLP) {
-            0b00 => PLLP::DivideBy2,
-            0b01 => PLLP::DivideBy4,
-            0b10 => PLLP::DivideBy6,
-            _ => PLLP::DivideBy8,
+    pub(crate) fn get_pll_clock_p_divider(&self) -> PLLPDivider {
+        let val = self.registers.pllcfgr.read(PLLCFGR::PLLP);
+
+        // PLLP divider is val + 1
+        match val {
+            1 => PLLPDivider::DivideBy2,
+            2 => PLLPDivider::DivideBy3,
+            3 => PLLPDivider::DivideBy4,
+            4 => PLLPDivider::DivideBy5,
+            5 => PLLPDivider::DivideBy6,
+            6 => PLLPDivider::DivideBy7,
+            7 => PLLPDivider::DivideBy8,
+            8 => PLLPDivider::DivideBy9,
+            9 => PLLPDivider::DivideBy10,
+            10 => PLLPDivider::DivideBy11,
+            11 => PLLPDivider::DivideBy12,
+            12 => PLLPDivider::DivideBy13,
+            13 => PLLPDivider::DivideBy14,
+            14 => PLLPDivider::DivideBy15,
+            15 => PLLPDivider::DivideBy16,
+            16 => PLLPDivider::DivideBy17,
+            17 => PLLPDivider::DivideBy18,
+            18 => PLLPDivider::DivideBy19,
+            19 => PLLPDivider::DivideBy20,
+            20 => PLLPDivider::DivideBy21,
+            21 => PLLPDivider::DivideBy22,
+            22 => PLLPDivider::DivideBy23,
+            23 => PLLPDivider::DivideBy24,
+            24 => PLLPDivider::DivideBy25,
+            25 => PLLPDivider::DivideBy26,
+            26 => PLLPDivider::DivideBy27,
+            27 => PLLPDivider::DivideBy28,
+            28 => PLLPDivider::DivideBy29,
+            29 => PLLPDivider::DivideBy30,
+            30 => PLLPDivider::DivideBy31,
+            31 => PLLPDivider::DivideBy32,
+            _ => unreachable!(),
         }
     }
 
     // This method must be called only if the main PLL clock is disabled
-    pub(crate) fn set_pll_clock_p_divider(&self, p: PLLP) {
+    pub(crate) fn set_pll_clock_p_divider(&self, p: PLLPDivider) {
         self.registers.pllcfgr.modify(PLLCFGR::PLLP.val(p as u32));
     }
 
-    pub(crate) fn _get_pll_clock_q_divider(&self) -> PLLQ {
+    pub(crate) fn _get_pll_clock_q_divider(&self) -> PLLQDivider {
         match self.registers.pllcfgr.read(PLLCFGR::PLLQ) {
-            3 => PLLQ::DivideBy3,
-            4 => PLLQ::DivideBy4,
-            5 => PLLQ::DivideBy5,
-            6 => PLLQ::DivideBy6,
-            7 => PLLQ::DivideBy7,
-            8 => PLLQ::DivideBy8,
-            9 => PLLQ::DivideBy9,
+            1 => PLLQDivider::DivideBy2,
+            2 => PLLQDivider::DivideBy3,
+            3 => PLLQDivider::DivideBy4,
+            4 => PLLQDivider::DivideBy5,
+            5 => PLLQDivider::DivideBy6,
+            6 => PLLQDivider::DivideBy7,
+            7 => PLLQDivider::DivideBy8,
             _ => panic!("Unexpected PLLQ divider"),
         }
     }
 
     // This method must be called only if the main PLL clock is disabled
-    pub(crate) fn set_pll_clock_q_divider(&self, q: PLLQ) {
+    pub(crate) fn set_pll_clock_q_divider(&self, q: PLLQDivider) {
         self.registers.pllcfgr.modify(PLLCFGR::PLLQ.val(q as u32));
+    }
+
+    // This method must be called only if the main PLL clock is disabled
+    pub(crate) fn set_pll_clock_r_divider(&self, r: PLLRDivider) {
+        self.registers.pllcfgr.modify(PLLCFGR::PLLR.val(r as u32));
     }
 
     /* AHB prescaler */
@@ -1043,101 +1088,115 @@ impl Rcc {
         }
     }
 
-    pub(crate) fn set_mco1_clock_source(&self, source: MCO1Source) {
-        self.registers.cfgr.modify(CFGR::MCO1.val(source as u32));
+    pub(crate) fn set_mco1_clock_source(&self, source: MCOSource) {
+        self.registers.cfgr.modify(CFGR::MCOSEL.val(source as u32));
     }
 
-    pub(crate) fn get_mco1_clock_source(&self) -> MCO1Source {
-        match self.registers.cfgr.read(CFGR::MCO1) {
-            0b00 => MCO1Source::HSI,
-            // When LSE or HSE are added, uncomment the following lines
-            //0b01 => MCO1Source::LSE,
-            0b10 => MCO1Source::HSE,
-            // 0b11 corresponds to MCO1Source::PLL
-            _ => MCO1Source::PLL,
+    pub(crate) fn get_mco1_clock_source(&self) -> MCOSource {
+        match self.registers.cfgr.read(CFGR::MCOSEL) {
+            0b0000 => MCOSource::DISABLED,
+            0b0001 => MCOSource::SYSCLK,
+            0b0010 => MCOSource::MSI,
+            0b0011 => MCOSource::HSI,
+            0b0100 => MCOSource::HSE,
+            0b0101 => MCOSource::PLLR,
+            0b0110 => MCOSource::LSI,
+            0b1000 => MCOSource::LSE,
+            0b1101 => MCOSource::PLLPCLK,
+            0b1110 => MCOSource::PLLQCLK,
+            _ => unreachable!(),
         }
     }
 
-    pub(crate) fn set_mco1_clock_divider(&self, divider: MCO1Divider) {
-        self.registers
-            .cfgr
-            .modify(CFGR::MCO1PRE.val(divider as u32));
+    // CHECKED
+    pub(crate) fn set_mco_clock_divider(&self, divider: MCODivider) {
+        self.registers.cfgr.modify(CFGR::MCOPRE.val(divider as u32));
     }
 
-    pub(crate) fn get_mco1_clock_divider(&self) -> MCO1Divider {
-        match self.registers.cfgr.read(CFGR::MCO1PRE) {
-            0b100 => MCO1Divider::DivideBy2,
-            0b101 => MCO1Divider::DivideBy3,
-            0b110 => MCO1Divider::DivideBy4,
-            0b111 => MCO1Divider::DivideBy5,
-            _ => MCO1Divider::DivideBy1,
+    // CHECKED
+    pub(crate) fn get_mco_clock_divider(&self) -> MCODivider {
+        match self.registers.cfgr.read(CFGR::MCOPRE) {
+            0b000 => MCODivider::DivideBy1,
+            0b001 => MCODivider::DivideBy2,
+            0b010 => MCODivider::DivideBy4,
+            0b011 => MCODivider::DivideBy8,
+            0b100 => MCODivider::DivideBy16,
+            _ => unreachable!(),
         }
     }
 
+    // CHECK THIS ONE
     pub(crate) fn configure_rng_clock(&self) {
-        self.registers.pllcfgr.modify(PLLCFGR::PLLQ.val(2));
-        self.registers.cr.modify(CR::PLLON::SET);
+        unimplemented!()
+        // self.registers.pllcfgr.modify(PLLCFGR::PLLQ.val(2));
+        // self.registers.cr.modify(CR::PLLON::SET);
     }
 
     // I2C1 clock
 
+    // CHECKED [x]
     pub(crate) fn is_enabled_i2c1_clock(&self) -> bool {
-        self.registers.apb1enr.is_set(APB1ENR::I2C1EN)
+        self.registers.apb1enr1.is_set(APB1ENR1::I2C1EN)
     }
 
     pub(crate) fn enable_i2c1_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::I2C1EN::SET);
-        self.registers.apb1rstr.modify(APB1RSTR::I2C1RST::SET);
-        self.registers.apb1rstr.modify(APB1RSTR::I2C1RST::CLEAR);
+        self.registers.apb1enr1.modify(APB1ENR1::I2C1EN::SET);
+        self.registers.apb1rstr1.modify(APB1RSTR1::I2C1RST::SET);
+        self.registers.apb1rstr1.modify(APB1RSTR1::I2C1RST::CLEAR);
     }
 
     pub(crate) fn disable_i2c1_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::I2C1EN::CLEAR)
+        self.registers.apb1enr1.modify(APB1ENR1::I2C1EN::CLEAR)
     }
 
-    // SPI3 clock
+    // SPI1 clock
 
-    pub(crate) fn is_enabled_spi3_clock(&self) -> bool {
-        self.registers.apb1enr.is_set(APB1ENR::SPI3EN)
+    pub(crate) fn is_enabled_spi1_clock(&self) -> bool {
+        self.registers.apb2enr.is_set(APB2ENR::SPI1EN)
     }
 
-    pub(crate) fn enable_spi3_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::SPI3EN::SET)
+    pub(crate) fn enable_spi1_clock(&self) {
+        self.registers.apb2enr.modify(APB2ENR::SPI1EN::SET)
     }
 
-    pub(crate) fn disable_spi3_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::SPI3EN::CLEAR)
+    pub(crate) fn disable_spi1_clock(&self) {
+        self.registers.apb2enr.modify(APB2ENR::SPI1EN::CLEAR)
     }
 
     // TIM2 clock
+    // NEED THIS / NOT SURE IF ON WLEX?
     pub(crate) fn is_enabled_tim_pre(&self) -> bool {
-        self.registers.dckcfgr.is_set(DCKCFGR::TIMPRE)
+        unimplemented!()
+        // self.registers.dckcfgr.is_set(DCKCFGR::TIMPRE)
     }
 
     pub(crate) fn is_enabled_tim2_clock(&self) -> bool {
-        self.registers.apb1enr.is_set(APB1ENR::TIM2EN)
+        self.registers.apb1enr1.is_set(APB1ENR1::TIM2EN)
     }
 
     pub(crate) fn enable_tim2_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::TIM2EN::SET)
+        self.registers.apb1enr1.modify(APB1ENR1::TIM2EN::SET)
     }
 
     pub(crate) fn disable_tim2_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::TIM2EN::CLEAR)
+        self.registers.apb1enr1.modify(APB1ENR1::TIM2EN::CLEAR)
     }
 
     // SYSCFG clock
 
     pub(crate) fn is_enabled_syscfg_clock(&self) -> bool {
-        self.registers.apb2enr.is_set(APB2ENR::SYSCFGEN)
+        unimplemented!()
+        // self.registers.apb2enr.is_set(APB2ENR::SYSCFGEN)
     }
 
     pub(crate) fn enable_syscfg_clock(&self) {
-        self.registers.apb2enr.modify(APB2ENR::SYSCFGEN::SET)
+        unimplemented!()
+        // self.registers.apb2enr.modify(APB2ENR::SYSCFGEN::SET)
     }
 
     pub(crate) fn disable_syscfg_clock(&self) {
-        self.registers.apb2enr.modify(APB2ENR::SYSCFGEN::CLEAR)
+        unimplemented!()
+        // self.registers.apb2enr.modify(APB2ENR::SYSCFGEN::CLEAR)
     }
 
     // DMA1 clock
@@ -1170,127 +1229,57 @@ impl Rcc {
     // GPIOH clock
 
     pub(crate) fn is_enabled_gpioh_clock(&self) -> bool {
-        self.registers.ahb1enr.is_set(AHB1ENR::GPIOHEN)
+        self.registers.ahb2enr.is_set(AHB2ENR::GPIOHEN)
     }
 
     pub(crate) fn enable_gpioh_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOHEN::SET)
+        self.registers.ahb2enr.modify(AHB2ENR::GPIOHEN::SET)
     }
 
     pub(crate) fn disable_gpioh_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOHEN::CLEAR)
-    }
-
-    // GPIOG clock
-
-    pub(crate) fn is_enabled_gpiog_clock(&self) -> bool {
-        self.registers.ahb1enr.is_set(AHB1ENR::GPIOGEN)
-    }
-
-    pub(crate) fn enable_gpiog_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOGEN::SET)
-    }
-
-    pub(crate) fn disable_gpiog_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOGEN::CLEAR)
-    }
-
-    // GPIOF clock
-
-    pub(crate) fn is_enabled_gpiof_clock(&self) -> bool {
-        self.registers.ahb1enr.is_set(AHB1ENR::GPIOFEN)
-    }
-
-    pub(crate) fn enable_gpiof_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOFEN::SET)
-    }
-
-    pub(crate) fn disable_gpiof_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOFEN::CLEAR)
-    }
-
-    // GPIOE clock
-
-    pub(crate) fn is_enabled_gpioe_clock(&self) -> bool {
-        self.registers.ahb1enr.is_set(AHB1ENR::GPIOEEN)
-    }
-
-    pub(crate) fn enable_gpioe_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOEEN::SET)
-    }
-
-    pub(crate) fn disable_gpioe_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOEEN::CLEAR)
-    }
-
-    // GPIOD clock
-
-    pub(crate) fn is_enabled_gpiod_clock(&self) -> bool {
-        self.registers.ahb1enr.is_set(AHB1ENR::GPIODEN)
-    }
-
-    pub(crate) fn enable_gpiod_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIODEN::SET)
-    }
-
-    pub(crate) fn disable_gpiod_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIODEN::CLEAR)
+        self.registers.ahb2enr.modify(AHB2ENR::GPIOHEN::CLEAR)
     }
 
     // GPIOC clock
 
     pub(crate) fn is_enabled_gpioc_clock(&self) -> bool {
-        self.registers.ahb1enr.is_set(AHB1ENR::GPIOCEN)
+        self.registers.ahb2enr.is_set(AHB2ENR::GPIOCEN)
     }
 
     pub(crate) fn enable_gpioc_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOCEN::SET)
+        self.registers.ahb2enr.modify(AHB2ENR::GPIOCEN::SET)
     }
 
     pub(crate) fn disable_gpioc_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOCEN::CLEAR)
+        self.registers.ahb2enr.modify(AHB2ENR::GPIOCEN::CLEAR)
     }
 
     // GPIOB clock
 
     pub(crate) fn is_enabled_gpiob_clock(&self) -> bool {
-        self.registers.ahb1enr.is_set(AHB1ENR::GPIOBEN)
+        self.registers.ahb2enr.is_set(AHB2ENR::GPIOBEN)
     }
 
     pub(crate) fn enable_gpiob_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOBEN::SET)
+        self.registers.ahb2enr.modify(AHB2ENR::GPIOBEN::SET)
     }
 
     pub(crate) fn disable_gpiob_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOBEN::CLEAR)
+        self.registers.ahb2enr.modify(AHB2ENR::GPIOBEN::CLEAR)
     }
 
     // GPIOA clock
 
     pub(crate) fn is_enabled_gpioa_clock(&self) -> bool {
-        self.registers.ahb1enr.is_set(AHB1ENR::GPIOAEN)
+        self.registers.ahb2enr.is_set(AHB2ENR::GPIOAEN)
     }
 
     pub(crate) fn enable_gpioa_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOAEN::SET)
+        self.registers.ahb2enr.modify(AHB2ENR::GPIOAEN::SET)
     }
 
     pub(crate) fn disable_gpioa_clock(&self) {
-        self.registers.ahb1enr.modify(AHB1ENR::GPIOAEN::CLEAR)
-    }
-
-    // FMC
-
-    pub(crate) fn is_enabled_fmc_clock(&self) -> bool {
-        self.registers.ahb3enr.is_set(AHB3ENR::FMCEN)
-    }
-
-    pub(crate) fn enable_fmc_clock(&self) {
-        self.registers.ahb3enr.modify(AHB3ENR::FMCEN::SET)
-    }
-
-    pub(crate) fn disable_fmc_clock(&self) {
-        self.registers.ahb3enr.modify(AHB3ENR::FMCEN::CLEAR)
+        self.registers.ahb2enr.modify(AHB2ENR::GPIOAEN::CLEAR)
     }
 
     // USART1 clock
@@ -1309,101 +1298,57 @@ impl Rcc {
     // USART2 clock
 
     pub(crate) fn is_enabled_usart2_clock(&self) -> bool {
-        self.registers.apb1enr.is_set(APB1ENR::USART2EN)
+        self.registers.apb1enr1.is_set(APB1ENR1::USART2EN)
     }
 
     pub(crate) fn enable_usart2_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::USART2EN::SET)
+        self.registers.apb1enr1.modify(APB1ENR1::USART2EN::SET)
     }
 
     pub(crate) fn disable_usart2_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::USART2EN::CLEAR)
-    }
-
-    // USART3 clock
-
-    pub(crate) fn is_enabled_usart3_clock(&self) -> bool {
-        self.registers.apb1enr.is_set(APB1ENR::USART3EN)
-    }
-
-    pub(crate) fn enable_usart3_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::USART3EN::SET)
-    }
-
-    pub(crate) fn disable_usart3_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::USART3EN::CLEAR)
+        self.registers.apb1enr1.modify(APB1ENR1::USART2EN::CLEAR)
     }
 
     // ADC1 clock
 
     pub(crate) fn is_enabled_adc1_clock(&self) -> bool {
-        self.registers.apb2enr.is_set(APB2ENR::ADC1EN)
+        self.registers.apb2enr.is_set(APB2ENR::ADCEN)
     }
 
     pub(crate) fn enable_adc1_clock(&self) {
-        self.registers.apb2enr.modify(APB2ENR::ADC1EN::SET)
+        self.registers.apb2enr.modify(APB2ENR::ADCEN::SET)
     }
 
     pub(crate) fn disable_adc1_clock(&self) {
-        self.registers.apb2enr.modify(APB2ENR::ADC1EN::CLEAR)
+        self.registers.apb2enr.modify(APB2ENR::ADCEN::CLEAR)
     }
 
     // DAC clock
 
     pub(crate) fn is_enabled_dac_clock(&self) -> bool {
-        self.registers.apb1enr.is_set(APB1ENR::DACEN)
+        self.registers.apb1enr1.is_set(APB1ENR1::DACEN)
     }
 
     pub(crate) fn enable_dac_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::DACEN::SET)
+        self.registers.apb1enr1.modify(APB1ENR1::DACEN::SET)
     }
 
     pub(crate) fn disable_dac_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::DACEN::CLEAR)
+        self.registers.apb1enr1.modify(APB1ENR1::DACEN::CLEAR)
     }
 
     // RNG clock
 
     pub(crate) fn is_enabled_rng_clock(&self) -> bool {
-        self.registers.ahb2enr.is_set(AHB2ENR::RNGEN)
+        self.registers.ahb3enr.is_set(AHB3ENR::RNGEN)
     }
 
     pub(crate) fn enable_rng_clock(&self) {
-        self.registers.ahb2enr.modify(AHB2ENR::RNGEN::SET);
+        self.registers.ahb3enr.modify(AHB3ENR::RNGEN::SET);
     }
 
     pub(crate) fn disable_rng_clock(&self) {
-        self.registers.ahb2enr.modify(AHB2ENR::RNGEN::CLEAR);
-    }
-
-    // OTGFS clock
-
-    pub(crate) fn is_enabled_otgfs_clock(&self) -> bool {
-        self.registers.ahb2enr.is_set(AHB2ENR::OTGFSEN)
-    }
-
-    pub(crate) fn enable_otgfs_clock(&self) {
-        self.registers.ahb2enr.modify(AHB2ENR::OTGFSEN::SET);
-    }
-
-    pub(crate) fn disable_otgfs_clock(&self) {
-        self.registers.ahb2enr.modify(AHB2ENR::OTGFSEN::CLEAR);
-    }
-
-    // CAN1 clock
-
-    pub(crate) fn is_enabled_can1_clock(&self) -> bool {
-        self.registers.apb1enr.is_set(APB1ENR::CAN1EN)
-    }
-
-    pub(crate) fn enable_can1_clock(&self) {
-        self.registers.apb1rstr.modify(APB1RSTR::CAN1RST::SET);
-        self.registers.apb1rstr.modify(APB1RSTR::CAN1RST::CLEAR);
-        self.registers.apb1enr.modify(APB1ENR::CAN1EN::SET);
-    }
-
-    pub(crate) fn disable_can1_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::CAN1EN::CLEAR);
+        self.registers.ahb3enr.modify(AHB3ENR::RNGEN::CLEAR);
     }
 
     // RTC clock
@@ -1419,6 +1364,7 @@ impl Rcc {
         self.registers.csr.modify(CSR::LSION::SET);
     }
 
+    /* NOT SURE IF POWER CLOCK IS ON WLE5x?
     pub(crate) fn is_enabled_pwr_clock(&self) -> bool {
         self.registers.apb1enr.is_set(APB1ENR::PWREN)
     }
@@ -1430,7 +1376,7 @@ impl Rcc {
 
     pub(crate) fn disable_pwr_clock(&self) {
         self.registers.apb1enr.modify(APB1ENR::PWREN::CLEAR);
-    }
+    } */
 
     pub(crate) fn is_enabled_rtc_clock(&self) -> bool {
         self.registers.bdcr.is_set(BDCR::RTCEN)
@@ -1461,69 +1407,110 @@ impl Rcc {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub(crate) enum PLLP {
-    DivideBy2 = 0b00,
-    DivideBy4 = 0b01,
-    DivideBy6 = 0b10,
-    DivideBy8 = 0b11,
+pub(crate) enum PLLPDivider {
+    DivideBy2 = 0b00001,
+    DivideBy3 = 0b00010,
+    DivideBy4 = 0b00011,
+    DivideBy5 = 0b00100,
+    DivideBy6 = 0b00101,
+    DivideBy7 = 0b00110,
+    DivideBy8 = 0b00111,
+    DivideBy9 = 0b01000,
+    DivideBy10 = 0b01001,
+    DivideBy11 = 0b01010,
+    DivideBy12 = 0b01011,
+    DivideBy13 = 0b01100,
+    DivideBy14 = 0b01101,
+    DivideBy15 = 0b01110,
+    DivideBy16 = 0b01111,
+    DivideBy17 = 0b10000,
+    DivideBy18 = 0b10001,
+    DivideBy19 = 0b10010,
+    DivideBy20 = 0b10011,
+    DivideBy21 = 0b10100,
+    DivideBy22 = 0b10101,
+    DivideBy23 = 0b10110,
+    DivideBy24 = 0b10111,
+    DivideBy25 = 0b11000,
+    DivideBy26 = 0b11001,
+    DivideBy27 = 0b11010,
+    DivideBy28 = 0b11011,
+    DivideBy29 = 0b11100,
+    DivideBy30 = 0b11101,
+    DivideBy31 = 0b11110,
+    DivideBy32 = 0b11111,
 }
 
-impl From<PLLP> for usize {
-    // (variant_value + 1) * 2 = X for X in DivideByX
-    fn from(item: PLLP) -> Self {
-        (item as usize + 1) << 1
-    }
+pub(crate) enum PLLRDivider {
+    DivideBy2 = 0b001,
+    DivideBy3 = 0b010,
+    DivideBy4 = 0b011,
+    DivideBy5 = 0b100,
+    DivideBy6 = 0b101,
+    DivideBy7 = 0b110,
+    DivideBy8 = 0b111,
 }
 
-// Theoretically, the PLLM value can range from 2 to 63. However, the current implementation was
-// designed to support 1MHz frequency precision. In a future update, PLLM will become a usize.
-#[allow(dead_code)]
-pub(crate) enum PLLM {
-    DivideBy8 = 8,
-    DivideBy16 = 16,
+pub(crate) enum PLLQDivider {
+    DivideBy2 = 0b001,
+    DivideBy3 = 0b010,
+    DivideBy4 = 0b011,
+    DivideBy5 = 0b100,
+    DivideBy6 = 0b101,
+    DivideBy7 = 0b110,
+    DivideBy8 = 0b111,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-// Due to the restricted values for PLLM, PLLQ 2/10-15 values are meaningless.
-pub(crate) enum PLLQ {
-    DivideBy3 = 3,
-    DivideBy4,
-    DivideBy5,
-    DivideBy6,
-    DivideBy7,
-    DivideBy8,
-    DivideBy9,
+pub(crate) enum PLLMDivider {
+    DivideBy1 = 0b000,
+    DivideBy2 = 0b001,
+    DivideBy3 = 0b010,
+    DivideBy4 = 0b011,
+    DivideBy5 = 0b100,
+    DivideBy6 = 0b101,
+    DivideBy7 = 0b110,
+    DivideBy8 = 0b111,
 }
 
+// CHECKED [x]
 /// Clock sources for the CPU
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum SysClockSource {
     MSI = 0b00,
     HSI = 0b01,
     HSE = 0b10,
-    PLL = 0b11,
+    PLLR = 0b11,
 }
 
+// CHECKED [x]
 pub enum PllSource {
+    None = 0b00,
     MSI = 0b01,
     HSI = 0b10,
     HSE = 0b11,
 }
 
-pub enum MCO1Source {
-    HSI = 0b00,
-    //LSE = 0b01, // When support for LSE is added, uncomment this
-    HSE = 0b10,
-    PLL = 0b11,
+// CHECKED [x]
+pub enum MCOSource {
+    DISABLED = 0b0000,
+    SYSCLK = 0b0001,
+    MSI = 0b0010,
+    HSI = 0b0011,
+    HSE = 0b0100,
+    PLLR = 0b0101,
+    LSI = 0b0110,
+    LSE = 0b1000,
+    PLLPCLK = 0b1101,
+    PLLQCLK = 0b1110,
 }
 
-pub enum MCO1Divider {
+// CHECKED
+pub enum MCODivider {
     DivideBy1 = 0b000,
-    DivideBy2 = 0b100,
-    DivideBy3 = 0b101,
-    DivideBy4 = 0b110,
-    DivideBy5 = 0b111,
+    DivideBy2 = 0b001,
+    DivideBy4 = 0b010,
+    DivideBy8 = 0b011,
+    DivideBy16 = 0b100,
 }
 
 /// HSE Mode
