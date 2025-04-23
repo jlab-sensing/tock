@@ -612,14 +612,14 @@ impl<'a> GpioPorts<'a> {
                 Port {
                     registers: GPIOA_BASE,
                     clock: PortClock(phclk::PeripheralClock::new(
-                        phclk::PeripheralClockType::AHB1(phclk::HCLK1::GPIOA),
+                        phclk::PeripheralClockType::AHB2(phclk::HCLK2::GPIOA),
                         clocks,
                     )),
                 },
                 Port {
                     registers: GPIOB_BASE,
                     clock: PortClock(phclk::PeripheralClock::new(
-                        phclk::PeripheralClockType::AHB1(phclk::HCLK1::GPIOB),
+                        phclk::PeripheralClockType::AHB2(phclk::HCLK2::GPIOB),
                         clocks,
                     )),
                 },

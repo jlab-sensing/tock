@@ -164,8 +164,8 @@ use crate::clocks::pll::Pll;
 // use crate::flash::Flash;
 use crate::rcc::AHBPrescaler;
 use crate::rcc::APBPrescaler;
-use crate::rcc::MCO1Divider;
-use crate::rcc::MCO1Source;
+use crate::rcc::MCODivider;
+use crate::rcc::MCOSource;
 use crate::rcc::PllSource;
 use crate::rcc::Rcc;
 use crate::rcc::SysClockSource;
@@ -365,7 +365,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
             SysClockSource::MSI => self.msi.is_enabled(),
             SysClockSource::HSI => self.hsi.is_enabled(),
             SysClockSource::HSE => self.hse.is_enabled(),
-            SysClockSource::PLL => self.pll.is_enabled(),
+            SysClockSource::PLLR => self.pll.is_enabled(),
         } {
             return Err(ErrorCode::FAIL);
         }
@@ -378,7 +378,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
             SysClockSource::MSI => self.msi.get_frequency_mhz().unwrap(),
             SysClockSource::HSI => self.hsi.get_frequency_mhz().unwrap(),
             SysClockSource::HSE => self.hse.get_frequency_mhz().unwrap(),
-            SysClockSource::PLL => self.pll.get_frequency_mhz().unwrap(),
+            SysClockSource::PLLR => self.pll.get_frequency_mhz().unwrap(),
         };
 
         // Check the alternate frequency is not higher than the system clock limit
@@ -438,7 +438,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
             SysClockSource::MSI => self.msi.get_frequency_mhz().unwrap(),
             SysClockSource::HSI => self.hsi.get_frequency_mhz().unwrap(),
             SysClockSource::HSE => self.hse.get_frequency_mhz().unwrap(),
-            SysClockSource::PLL => self.pll.get_frequency_mhz().unwrap(),
+            SysClockSource::PLLR => self.pll.get_frequency_mhz().unwrap(),
         }
     }
 
@@ -452,11 +452,12 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
             SysClockSource::MSI => self.msi.get_frequency_mhz().unwrap(),
             SysClockSource::HSI => self.hsi.get_frequency_mhz().unwrap(),
             SysClockSource::HSE => self.hse.get_frequency_mhz().unwrap(),
-            SysClockSource::PLL => {
+            SysClockSource::PLLR => {
                 let pll_source_frequency = match self.rcc.get_pll_clocks_source() {
                     PllSource::MSI => self.msi.get_frequency_mhz().unwrap(),
                     PllSource::HSI => self.hsi.get_frequency_mhz().unwrap(),
                     PllSource::HSE => self.hse.get_frequency_mhz().unwrap(),
+                    _ => unimplemented!(),
                 };
                 self.pll
                     .get_frequency_mhz_no_cache(pll_source_frequency)
@@ -487,6 +488,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
             PllSource::MSI => self.msi.get_frequency_mhz().unwrap(),
             PllSource::HSI => HSI_FREQUENCY_MHZ,
             PllSource::HSE => self.hse.get_frequency_mhz().unwrap(),
+            _ => unimplemented!(),
         };
         self.pll
             .set_frequency_mhz(pll_source, source_frequency, desired_frequency_mhz)
@@ -497,14 +499,14 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
     /// # Errors:
     ///
     /// + [Err]\([ErrorCode::FAIL]\) if the source apart from HSI is already enabled.
-    pub fn set_mco1_clock_source(&self, source: MCO1Source) -> Result<(), ErrorCode> {
+    pub fn set_mco1_clock_source(&self, source: MCOSource) -> Result<(), ErrorCode> {
         match source {
-            MCO1Source::HSE => {
+            MCOSource::HSE => {
                 if !self.hse.is_enabled() {
                     return Err(ErrorCode::FAIL);
                 }
             }
-            MCO1Source::PLL => {
+            MCOSource::PLLR => {
                 if self.pll.is_enabled() {
                     return Err(ErrorCode::FAIL);
                 }
@@ -517,8 +519,8 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
         Ok(())
     }
 
-    /// Get the clock source of the MCO1
-    pub fn get_mco1_clock_source(&self) -> MCO1Source {
+    /// Get the clock source of the MCO
+    pub fn get_mco1_clock_source(&self) -> MCOSource {
         self.rcc.get_mco1_clock_source()
     }
 
@@ -527,25 +529,26 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
     /// # Errors:
     ///
     /// + [Err]\([ErrorCode::FAIL]\) if the configured source apart from HSI is already enabled.
-    pub fn set_mco1_clock_divider(&self, divider: MCO1Divider) -> Result<(), ErrorCode> {
+    pub fn set_mco1_clock_divider(&self, divider: MCODivider) -> Result<(), ErrorCode> {
         match self.get_mco1_clock_source() {
-            MCO1Source::PLL => {
+            MCOSource::PLLR => {
                 if self.pll.is_enabled() {
                     return Err(ErrorCode::FAIL);
                 }
             }
-            MCO1Source::HSI => (),
-            MCO1Source::HSE => (),
+            MCOSource::HSI => (),
+            MCOSource::HSE => (),
+            _ => unimplemented!(),
         }
 
-        self.rcc.set_mco1_clock_divider(divider);
+        self.rcc.set_mco_clock_divider(divider);
 
         Ok(())
     }
 
     /// Get MCO1 divider
-    pub fn get_mco1_clock_divider(&self) -> MCO1Divider {
-        self.rcc.get_mco1_clock_divider()
+    pub fn get_mco1_clock_divider(&self) -> MCODivider {
+        self.rcc.get_mco_clock_divider()
     }
 }
 
@@ -573,471 +576,469 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32f4Clocks for Clocks<'a, ChipSpecs> {
     }
 }
 
-/// Tests for clocks functionalities
-///
-/// These tests ensure the clocks are properly working. If any changes are made to the clock
-/// module, make sure to run these tests.
-///
-/// # Usage
-///
-/// First, import the [crate::clocks] module inside the board main file:
-///
-/// ```rust,ignore
-/// // This example assumes a STM32F429 chip
-/// use stm32f429zi::clocks;
-/// ```
-///
-/// To run all the available tests, add this line before **kernel::process::load_processes()**:
-///
-/// ```rust,ignore
-/// clocks::tests::run_all(&peripherals.stm32f4.clocks);
-/// ```
-///
-/// If everything works as expected, the following message should be printed on the kernel console:
-///
-/// ```text
-/// ===============================================
-/// Testing clocks...
-///
-/// ===============================================
-/// Testing HSI...
-/// Finished testing HSI. Everything is alright!
-/// ===============================================
-///
-///
-/// ===============================================
-/// Testing PLL...
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// Testing PLL configuration...
-/// Finished testing PLL configuration.
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// Testing PLL struct...
-/// Finished testing PLL struct.
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// Finished testing PLL. Everything is alright!
-/// ===============================================
-///
-///
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// Testing clocks struct...
-/// Finished testing clocks struct. Everything is alright!
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-///
-/// Finished testing clocks. Everything is alright!
-/// ===============================================
-/// ```
-///
-/// There is also the possibility to run a part of the test suite. Check the functions present in
-/// this module for more details.
-///
-/// # Errors
-///
-/// If there are any errors, open an issue ticket at <https://github.com/tock/tock>. Please provide the
-/// output of the test execution.
-pub mod tests {
-    use super::*;
-
-    const LOW_FREQUENCY: usize = 25;
-    #[cfg(not(any(
-        feature = "stm32f401",
-        feature = "stm32f410",
-        feature = "stm32f411",
-        feature = "stm32f412",
-        feature = "stm32f413",
-        feature = "stm32f423"
-    )))]
-    const HIGH_FREQUENCY: usize = 112;
-    #[cfg(any(
-        feature = "stm32f401",
-        feature = "stm32f410",
-        feature = "stm32f411",
-        feature = "stm32f412",
-        feature = "stm32f413",
-        feature = "stm32f423"
-    ))]
-    const HIGH_FREQUENCY: usize = 80;
-
-    fn set_default_configuration<ChipSpecs: ChipSpecsTrait>(clocks: &Clocks<ChipSpecs>) {
-        assert_eq!(Ok(()), clocks.set_sys_clock_source(SysClockSource::HSI));
-        assert_eq!(Ok(()), clocks.pll.disable());
-        assert_eq!(Ok(()), clocks.set_ahb_prescaler(AHBPrescaler::DivideBy1));
-        assert_eq!(Ok(()), clocks.set_apb1_prescaler(APBPrescaler::DivideBy1));
-        assert_eq!(Ok(()), clocks.set_apb2_prescaler(APBPrescaler::DivideBy1));
-        assert_eq!(HSI_FREQUENCY_MHZ, clocks.get_sys_clock_frequency_mhz());
-        assert_eq!(HSI_FREQUENCY_MHZ, clocks.get_apb1_frequency_mhz());
-        assert_eq!(HSI_FREQUENCY_MHZ, clocks.get_apb2_frequency_mhz());
-    }
-
-    // This macro ensure that the system clock frequency goes back to the default value to prevent
-    // changing the UART baud rate
-    macro_rules! check_and_panic {
-        ($left:expr, $right:expr, $clocks: ident) => {
-            match (&$left, &$right) {
-                (left_val, right_val) => {
-                    if *left_val != *right_val {
-                        set_default_configuration($clocks);
-                        assert_eq!($left, $right);
-                    }
-                }
-            };
-        };
-    }
-
-    /// Test for the AHB and APB prescalers
-    ///
-    /// # Usage
-    ///
-    /// First, import the clock module:
-    ///
-    /// ```rust,ignore
-    /// // This test assumes a STM32F429 chip
-    /// use stm32f429zi::clocks;
-    /// ```
-    ///
-    /// Then run the test:
-    ///
-    /// ```rust,ignore
-    /// clocks::test::test_prescalers(&peripherals.stm32f4.clocks);
-    /// ```
-    pub fn test_prescalers<ChipSpecs: ChipSpecsTrait>(clocks: &Clocks<ChipSpecs>) {
-        // This test requires a bit of setup. A system clock running at HIGH_FREQUENCY is configured.
-        check_and_panic!(
-            Ok(()),
-            clocks
-                .pll
-                .set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, HIGH_FREQUENCY),
-            clocks
-        );
-        check_and_panic!(Ok(()), clocks.pll.enable(), clocks);
-        check_and_panic!(
-            Ok(()),
-            clocks.set_apb1_prescaler(APBPrescaler::DivideBy4),
-            clocks
-        );
-        check_and_panic!(
-            Ok(()),
-            clocks.set_apb2_prescaler(APBPrescaler::DivideBy2),
-            clocks
-        );
-        check_and_panic!(
-            Ok(()),
-            clocks.set_sys_clock_source(SysClockSource::PLL),
-            clocks
-        );
-
-        // Trying to reduce the APB scaler to an invalid value should fail
-        check_and_panic!(
-            Err(ErrorCode::FAIL),
-            clocks.set_apb1_prescaler(APBPrescaler::DivideBy1),
-            clocks
-        );
-        // The following assert will pass on these models because of the low system clock
-        // frequency limit
-        #[cfg(not(any(
-            feature = "stm32f401",
-            feature = "stm32f410",
-            feature = "stm32f411",
-            feature = "stm32f412",
-            feature = "stm32f413",
-            feature = "stm32f423"
-        )))]
-        check_and_panic!(
-            Err(ErrorCode::FAIL),
-            clocks.set_apb2_prescaler(APBPrescaler::DivideBy1),
-            clocks
-        );
-        // Any failure in changing the APB prescalers must preserve their values
-        check_and_panic!(APBPrescaler::DivideBy4, clocks.get_apb1_prescaler(), clocks);
-        check_and_panic!(APBPrescaler::DivideBy2, clocks.get_apb2_prescaler(), clocks);
-
-        // Increasing the AHB prescaler should allow decreasing APB prescalers
-        check_and_panic!(
-            Ok(()),
-            clocks.set_ahb_prescaler(AHBPrescaler::DivideBy4),
-            clocks
-        );
-        check_and_panic!(
-            Ok(()),
-            clocks.set_apb1_prescaler(APBPrescaler::DivideBy1),
-            clocks
-        );
-        check_and_panic!(
-            Ok(()),
-            clocks.set_apb2_prescaler(APBPrescaler::DivideBy1),
-            clocks
-        );
-
-        // Now, decreasing the AHB prescaler would result in the violation of APB constraints
-        check_and_panic!(
-            Err(ErrorCode::FAIL),
-            clocks.set_ahb_prescaler(AHBPrescaler::DivideBy1),
-            clocks
-        );
-        // Any failure in changing the AHB prescaler must preserve its value
-        check_and_panic!(AHBPrescaler::DivideBy4, clocks.get_ahb_prescaler(), clocks);
-
-        // Revert to default configuration
-        set_default_configuration(clocks);
-    }
-
-    /// Test for the [crate::clocks::Clocks] struct
-    ///
-    /// # Usage
-    ///
-    /// First, import the clock module:
-    ///
-    /// ```rust,ignore
-    /// // This test assumes a STM32F429 chip
-    /// use stm32f429zi::clocks;
-    /// ```
-    ///
-    /// Then run the test:
-    ///
-    /// ```rust,ignore
-    /// clocks::test::test_clocks_struct(&peripherals.stm32f4.clocks);
-    /// ```
-    pub fn test_clocks_struct<ChipSpecs: ChipSpecsTrait>(clocks: &Clocks<ChipSpecs>) {
-        debug!("");
-        debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-        debug!("Testing clocks struct...");
-
-        // By default, the HSI clock is the system clock
-        check_and_panic!(SysClockSource::HSI, clocks.get_sys_clock_source(), clocks);
-
-        // HSI frequency is 16MHz
-        check_and_panic!(
-            HSI_FREQUENCY_MHZ,
-            clocks.get_sys_clock_frequency_mhz(),
-            clocks
-        );
-
-        // APB1 default prescaler is 1
-        check_and_panic!(APBPrescaler::DivideBy1, clocks.get_apb1_prescaler(), clocks);
-
-        // APB1 default frequency is 16MHz
-        check_and_panic!(HSI_FREQUENCY_MHZ, clocks.get_apb1_frequency_mhz(), clocks);
-
-        // APB2 default prescaler is 1
-        check_and_panic!(APBPrescaler::DivideBy1, clocks.get_apb1_prescaler(), clocks);
-
-        // APB2 default frequency is 16MHz
-        check_and_panic!(HSI_FREQUENCY_MHZ, clocks.get_apb2_frequency_mhz(), clocks);
-
-        // Attempting to change the system clock source with a disabled source
-        check_and_panic!(
-            Err(ErrorCode::FAIL),
-            clocks.set_sys_clock_source(SysClockSource::PLL),
-            clocks
-        );
-
-        // Attempting to set twice the same system clock source is fine
-        check_and_panic!(
-            Ok(()),
-            clocks.set_sys_clock_source(SysClockSource::HSI),
-            clocks
-        );
-
-        // Change the system clock source to a low frequency so that APB prescalers don't need to be
-        // changed
-        check_and_panic!(
-            Ok(()),
-            clocks
-                .pll
-                .set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, LOW_FREQUENCY),
-            clocks
-        );
-        check_and_panic!(Ok(()), clocks.pll.enable(), clocks);
-        check_and_panic!(
-            Ok(()),
-            clocks.set_sys_clock_source(SysClockSource::PLL),
-            clocks
-        );
-        check_and_panic!(SysClockSource::PLL, clocks.get_sys_clock_source(), clocks);
-
-        // Now the system clock frequency is equal to 25MHz
-        check_and_panic!(LOW_FREQUENCY, clocks.get_sys_clock_frequency_mhz(), clocks);
-
-        // APB1 and APB2 frequencies must also be 25MHz
-        check_and_panic!(LOW_FREQUENCY, clocks.get_apb1_frequency_mhz(), clocks);
-        check_and_panic!(LOW_FREQUENCY, clocks.get_apb2_frequency_mhz(), clocks);
-
-        // Attempting to disable PLL when it is configured as the system clock must fail
-        check_and_panic!(Err(ErrorCode::FAIL), clocks.pll.disable(), clocks);
-        // Same for the HSI since it is used indirectly as a system clock through PLL
-        check_and_panic!(Err(ErrorCode::FAIL), clocks.hsi.disable(), clocks);
-
-        // Revert to default system clock configuration
-        set_default_configuration(clocks);
-
-        // Attempting to change the system clock frequency without correctly configuring the APB1
-        // prescaler (freq_APB1 <= APB1_FREQUENCY_LIMIT_MHZ) and APB2 prescaler
-        // (freq_APB2 <= APB2_FREQUENCY_LIMIT_MHZ) must fail
-        check_and_panic!(Ok(()), clocks.pll.disable(), clocks);
-        check_and_panic!(
-            Ok(()),
-            clocks
-                .pll
-                .set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, HIGH_FREQUENCY),
-            clocks
-        );
-        check_and_panic!(Ok(()), clocks.pll.enable(), clocks);
-        check_and_panic!(
-            Err(ErrorCode::SIZE),
-            clocks.set_sys_clock_source(SysClockSource::PLL),
-            clocks
-        );
-
-        // Even if the APB1 prescaler is changed to 2, it must fail
-        // (HIGH_FREQUENCY / 2 > APB1_FREQUENCY_LIMIT_MHZ)
-        check_and_panic!(
-            Ok(()),
-            clocks.set_apb1_prescaler(APBPrescaler::DivideBy2),
-            clocks
-        );
-        #[cfg(not(any(
-            feature = "stm32f401",
-            feature = "stm32f410",
-            feature = "stm32f411",
-            feature = "stm32f412",
-            feature = "stm32f413",
-            feature = "stm32f423"
-        )))]
-        check_and_panic!(
-            Err(ErrorCode::SIZE),
-            clocks.set_sys_clock_source(SysClockSource::PLL),
-            clocks
-        );
-
-        // Configuring APB1 prescaler to 4 is fine, but APB2 prescaler is still wrong
-        check_and_panic!(
-            Ok(()),
-            clocks.set_apb1_prescaler(APBPrescaler::DivideBy4),
-            clocks
-        );
-        #[cfg(not(any(
-            feature = "stm32f401",
-            feature = "stm32f410",
-            feature = "stm32f411",
-            feature = "stm32f412",
-            feature = "stm32f413",
-            feature = "stm32f423"
-        )))]
-        check_and_panic!(
-            Err(ErrorCode::SIZE),
-            clocks.set_sys_clock_source(SysClockSource::PLL),
-            clocks
-        );
-
-        // Configuring APB2 prescaler to 2
-        check_and_panic!(
-            Ok(()),
-            clocks.set_apb2_prescaler(APBPrescaler::DivideBy2),
-            clocks
-        );
-
-        // Now the system clock source can be changed
-        check_and_panic!(
-            Ok(()),
-            clocks.set_sys_clock_source(SysClockSource::PLL),
-            clocks
-        );
-        check_and_panic!(HIGH_FREQUENCY / 4, clocks.get_apb1_frequency_mhz(), clocks);
-        check_and_panic!(HIGH_FREQUENCY / 2, clocks.get_apb2_frequency_mhz(), clocks);
-
-        // Revert to default system clock configuration
-        set_default_configuration(clocks);
-
-        // This time, configure the AHB prescaler instead of APB prescalers
-        check_and_panic!(
-            Ok(()),
-            clocks.set_ahb_prescaler(AHBPrescaler::DivideBy4),
-            clocks
-        );
-        check_and_panic!(Ok(()), clocks.pll.enable(), clocks);
-        check_and_panic!(
-            Ok(()),
-            clocks.set_sys_clock_source(SysClockSource::PLL),
-            clocks
-        );
-        check_and_panic!(HIGH_FREQUENCY / 4, clocks.get_ahb_frequency_mhz(), clocks);
-        check_and_panic!(HIGH_FREQUENCY / 4, clocks.get_apb1_frequency_mhz(), clocks);
-        check_and_panic!(HIGH_FREQUENCY / 4, clocks.get_apb2_frequency_mhz(), clocks);
-
-        // Revert to default configuration
-        set_default_configuration(clocks);
-
-        debug!("Finished testing clocks struct. Everything is alright!");
-        debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-        debug!("");
-    }
-
-    /// Test for the microcontroller clock outputs
-    ///
-    /// # Usage
-    ///
-    /// First, import the clock module:
-    ///
-    /// ```rust,ignore
-    /// // This test assumes a STM32F429 chip
-    /// use stm32f429zi::clocks;
-    /// ```
-    ///
-    /// Then run the test:
-    ///
-    /// ```rust,ignore
-    /// clocks::test::test_mco(&peripherals.stm32f4.clocks);
-    /// ```
-    pub fn test_mco<ChipSpecs: ChipSpecsTrait>(clocks: &Clocks<ChipSpecs>) {
-        debug!("");
-        debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-        debug!("Testing MCOs...");
-
-        // Set MCO1 source to PLL
-        assert_eq!(Ok(()), clocks.set_mco1_clock_source(MCO1Source::PLL));
-
-        // Set MCO1 divider to 3
-        assert_eq!(
-            Ok(()),
-            clocks.set_mco1_clock_divider(MCO1Divider::DivideBy3)
-        );
-
-        // Enable PLL
-        assert_eq!(Ok(()), clocks.pll.enable());
-
-        // Attempting to change the divider while the PLL is running must fail
-        assert_eq!(
-            Err(ErrorCode::FAIL),
-            clocks.set_mco1_clock_divider(MCO1Divider::DivideBy2)
-        );
-
-        // Switch back to HSI
-        assert_eq!(Ok(()), clocks.set_mco1_clock_source(MCO1Source::HSI));
-
-        // Attempting to change the source to PLL when it is already enabled must fail
-        assert_eq!(
-            Err(ErrorCode::FAIL),
-            clocks.set_mco1_clock_source(MCO1Source::PLL)
-        );
-
-        debug!("Finished testing MCOs. Everything is alright!");
-        debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-        debug!("");
-    }
-
-    /// Run the entire test suite for all clocks
-    pub fn run_all<ChipSpecs: ChipSpecsTrait>(clocks: &Clocks<ChipSpecs>) {
-        debug!("");
-        debug!("===============================================");
-        debug!("Testing clocks...");
-
-        crate::clocks::hsi::tests::run(&clocks.hsi);
-        crate::clocks::pll::tests::run(&clocks.pll);
-        test_prescalers(clocks);
-        test_clocks_struct(clocks);
-        test_mco(clocks);
-
-        debug!("Finished testing clocks. Everything is alright!");
-        debug!("===============================================");
-        debug!("");
-    }
-}
+// Tests for clocks functionalities
+//
+// These tests ensure the clocks are properly working. If any changes are made to the clock
+// module, make sure to run these tests.
+//
+// # Usage
+//
+// First, import the [crate::clocks] module inside the board main file:
+//
+// ```rust,ignore
+// // This example assumes a STM32F429 chip
+// use stm32f429zi::clocks;
+// ```
+//
+// To run all the available tests, add this line before **kernel::process::load_processes()**:
+//
+// ```rust,ignore
+// clocks::tests::run_all(&peripherals.stm32f4.clocks);
+// ```
+//
+// If everything works as expected, the following message should be printed on the kernel console:
+//
+// ```text
+// ===============================================
+// Testing clocks...
+//
+// ===============================================
+// Testing HSI...
+// Finished testing HSI. Everything is alright!
+// ===============================================
+//
+//
+// ===============================================
+// Testing PLL...
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Testing PLL configuration...
+// Finished testing PLL configuration.
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Testing PLL struct...
+// Finished testing PLL struct.
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Finished testing PLL. Everything is alright!
+// ===============================================
+//
+//
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Testing clocks struct...
+// Finished testing clocks struct. Everything is alright!
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+// Finished testing clocks. Everything is alright!
+// ===============================================
+// ```
+//
+// There is also the possibility to run a part of the test suite. Check the functions present in
+// this module for more details.
+//
+// # Errors
+//
+// If there are any errors, open an issue ticket at <https://github.com/tock/tock>. Please provide the
+// output of the test execution.
+// pub mod tests {
+//     use super::*;
+//
+//     const LOW_FREQUENCY: usize = 25;
+//     #[cfg(not(any(
+//         feature = "stm32f401",
+//         feature = "stm32f410",
+//         feature = "stm32f411",
+//         feature = "stm32f412",
+//         feature = "stm32f413",
+//         feature = "stm32f423"
+//     )))]
+//     const HIGH_FREQUENCY: usize = 112;
+//     #[cfg(any(
+//         feature = "stm32f401",
+//         feature = "stm32f410",
+//         feature = "stm32f411",
+//         feature = "stm32f412",
+//         feature = "stm32f413",
+//         feature = "stm32f423"
+//     ))]
+//     const HIGH_FREQUENCY: usize = 80;
+//
+//     fn set_default_configuration<ChipSpecs: ChipSpecsTrait>(clocks: &Clocks<ChipSpecs>) {
+//         assert_eq!(Ok(()), clocks.set_sys_clock_source(SysClockSource::HSI));
+//         assert_eq!(Ok(()), clocks.pll.disable());
+//         assert_eq!(Ok(()), clocks.set_ahb_prescaler(AHBPrescaler::DivideBy1));
+//         assert_eq!(Ok(()), clocks.set_apb1_prescaler(APBPrescaler::DivideBy1));
+//         assert_eq!(Ok(()), clocks.set_apb2_prescaler(APBPrescaler::DivideBy1));
+//         assert_eq!(HSI_FREQUENCY_MHZ, clocks.get_sys_clock_frequency_mhz());
+//         assert_eq!(HSI_FREQUENCY_MHZ, clocks.get_apb1_frequency_mhz());
+//         assert_eq!(HSI_FREQUENCY_MHZ, clocks.get_apb2_frequency_mhz());
+//     }
+//
+//     // This macro ensure that the system clock frequency goes back to the default value to prevent
+//     // changing the UART baud rate
+//     macro_rules! check_and_panic {
+//         ($left:expr, $right:expr, $clocks: ident) => {
+//             match (&$left, &$right) {
+//                 (left_val, right_val) => {
+//                     if *left_val != *right_val {
+//                         set_default_configuration($clocks);
+//                         assert_eq!($left, $right);
+//                     }
+//                 }
+//             };
+//         };
+//     }
+//
+//     /// Test for the AHB and APB prescalers
+//     ///
+//     /// # Usage
+//     ///
+//     /// First, import the clock module:
+//     ///
+//     /// ```rust,ignore
+//     /// // This test assumes a STM32F429 chip
+//     /// use stm32f429zi::clocks;
+//     /// ```
+//     ///
+//     /// Then run the test:
+//     ///
+//     /// ```rust,ignore
+//     /// clocks::test::test_prescalers(&peripherals.stm32f4.clocks);
+//     /// ```
+//     pub fn test_prescalers<ChipSpecs: ChipSpecsTrait>(clocks: &Clocks<ChipSpecs>) {
+//         // This test requires a bit of setup. A system clock running at HIGH_FREQUENCY is configured.
+//         check_and_panic!(
+//             Ok(()),
+//             clocks
+//                 .pll
+//                 .set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, HIGH_FREQUENCY),
+//             clocks
+//         );
+//         check_and_panic!(Ok(()), clocks.pll.enable(), clocks);
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_apb1_prescaler(APBPrescaler::DivideBy4),
+//             clocks
+//         );
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_apb2_prescaler(APBPrescaler::DivideBy2),
+//             clocks
+//         );
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_sys_clock_source(SysClockSource::PLL),
+//             clocks
+//         );
+//
+//         // Trying to reduce the APB scaler to an invalid value should fail
+//         check_and_panic!(
+//             Err(ErrorCode::FAIL),
+//             clocks.set_apb1_prescaler(APBPrescaler::DivideBy1),
+//             clocks
+//         );
+//         // The following assert will pass on these models because of the low system clock
+//         // frequency limit
+//         #[cfg(not(any(
+//             feature = "stm32f401",
+//             feature = "stm32f410",
+//             feature = "stm32f411",
+//             feature = "stm32f412",
+//             feature = "stm32f413",
+//             feature = "stm32f423"
+//         )))]
+//         check_and_panic!(
+//             Err(ErrorCode::FAIL),
+//             clocks.set_apb2_prescaler(APBPrescaler::DivideBy1),
+//             clocks
+//         );
+//         // Any failure in changing the APB prescalers must preserve their values
+//         check_and_panic!(APBPrescaler::DivideBy4, clocks.get_apb1_prescaler(), clocks);
+//         check_and_panic!(APBPrescaler::DivideBy2, clocks.get_apb2_prescaler(), clocks);
+//
+//         // Increasing the AHB prescaler should allow decreasing APB prescalers
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_ahb_prescaler(AHBPrescaler::DivideBy4),
+//             clocks
+//         );
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_apb1_prescaler(APBPrescaler::DivideBy1),
+//             clocks
+//         );
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_apb2_prescaler(APBPrescaler::DivideBy1),
+//             clocks
+//         );
+//
+//         // Now, decreasing the AHB prescaler would result in the violation of APB constraints
+//         check_and_panic!(
+//             Err(ErrorCode::FAIL),
+//             clocks.set_ahb_prescaler(AHBPrescaler::DivideBy1),
+//             clocks
+//         );
+//         // Any failure in changing the AHB prescaler must preserve its value
+//         check_and_panic!(AHBPrescaler::DivideBy4, clocks.get_ahb_prescaler(), clocks);
+//
+//         // Revert to default configuration
+//         set_default_configuration(clocks);
+//     }
+//
+//     /// Test for the [crate::clocks::Clocks] struct
+//     ///
+//     /// # Usage
+//     ///
+//     /// First, import the clock module:
+//     ///
+//     /// ```rust,ignore
+//     /// // This test assumes a STM32F429 chip
+//     /// use stm32f429zi::clocks;
+//     /// ```
+//     ///
+//     /// Then run the test:
+//     ///
+//     /// ```rust,ignore
+//     /// clocks::test::test_clocks_struct(&peripherals.stm32f4.clocks);
+//     /// ```
+//     pub fn test_clocks_struct<ChipSpecs: ChipSpecsTrait>(clocks: &Clocks<ChipSpecs>) {
+//         debug!("");
+//         debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+//         debug!("Testing clocks struct...");
+//
+//         // By default, the HSI clock is the system clock
+//         check_and_panic!(SysClockSource::HSI, clocks.get_sys_clock_source(), clocks);
+//
+//         // HSI frequency is 16MHz
+//         check_and_panic!(
+//             HSI_FREQUENCY_MHZ,
+//             clocks.get_sys_clock_frequency_mhz(),
+//             clocks
+//         );
+//
+//         // APB1 default prescaler is 1
+//         check_and_panic!(APBPrescaler::DivideBy1, clocks.get_apb1_prescaler(), clocks);
+//
+//         // APB1 default frequency is 16MHz
+//         check_and_panic!(HSI_FREQUENCY_MHZ, clocks.get_apb1_frequency_mhz(), clocks);
+//
+//         // APB2 default prescaler is 1
+//         check_and_panic!(APBPrescaler::DivideBy1, clocks.get_apb1_prescaler(), clocks);
+//
+//         // APB2 default frequency is 16MHz
+//         check_and_panic!(HSI_FREQUENCY_MHZ, clocks.get_apb2_frequency_mhz(), clocks);
+//
+//         // Attempting to change the system clock source with a disabled source
+//         check_and_panic!(
+//             Err(ErrorCode::FAIL),
+//             clocks.set_sys_clock_source(SysClockSource::PLL),
+//             clocks
+//         );
+//
+//         // Attempting to set twice the same system clock source is fine
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_sys_clock_source(SysClockSource::HSI),
+//             clocks
+//         );
+//
+//         // Change the system clock source to a low frequency so that APB prescalers don't need to be
+//         // changed
+//         check_and_panic!(
+//             Ok(()),
+//             clocks
+//                 .pll
+//                 .set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, LOW_FREQUENCY),
+//             clocks
+//         );
+//         check_and_panic!(Ok(()), clocks.pll.enable(), clocks);
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_sys_clock_source(SysClockSource::PLL),
+//             clocks
+//         );
+//         check_and_panic!(SysClockSource::PLL, clocks.get_sys_clock_source(), clocks);
+//
+//         // Now the system clock frequency is equal to 25MHz
+//         check_and_panic!(LOW_FREQUENCY, clocks.get_sys_clock_frequency_mhz(), clocks);
+//
+//         // APB1 and APB2 frequencies must also be 25MHz
+//         check_and_panic!(LOW_FREQUENCY, clocks.get_apb1_frequency_mhz(), clocks);
+//         check_and_panic!(LOW_FREQUENCY, clocks.get_apb2_frequency_mhz(), clocks);
+//
+//         // Attempting to disable PLL when it is configured as the system clock must fail
+//         check_and_panic!(Err(ErrorCode::FAIL), clocks.pll.disable(), clocks);
+//         // Same for the HSI since it is used indirectly as a system clock through PLL
+//         check_and_panic!(Err(ErrorCode::FAIL), clocks.hsi.disable(), clocks);
+//
+//         // Revert to default system clock configuration
+//         set_default_configuration(clocks);
+//
+//         // Attempting to change the system clock frequency without correctly configuring the APB1
+//         // prescaler (freq_APB1 <= APB1_FREQUENCY_LIMIT_MHZ) and APB2 prescaler
+//         // (freq_APB2 <= APB2_FREQUENCY_LIMIT_MHZ) must fail
+//         check_and_panic!(Ok(()), clocks.pll.disable(), clocks);
+//         check_and_panic!(
+//             Ok(()),
+//             clocks
+//                 .pll
+//                 .set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, HIGH_FREQUENCY),
+//             clocks
+//         );
+//         check_and_panic!(Ok(()), clocks.pll.enable(), clocks);
+//         check_and_panic!(
+//             Err(ErrorCode::SIZE),
+//             clocks.set_sys_clock_source(SysClockSource::PLL),
+//             clocks
+//         );
+//
+//         // Even if the APB1 prescaler is changed to 2, it must fail
+//         // (HIGH_FREQUENCY / 2 > APB1_FREQUENCY_LIMIT_MHZ)
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_apb1_prescaler(APBPrescaler::DivideBy2),
+//             clocks
+//         );
+//         #[cfg(not(any(
+//             feature = "stm32f401",
+//             feature = "stm32f410",
+//             feature = "stm32f411",
+//             feature = "stm32f412",
+//             feature = "stm32f413",
+//             feature = "stm32f423"
+//         )))]
+//         check_and_panic!(
+//             Err(ErrorCode::SIZE),
+//             clocks.set_sys_clock_source(SysClockSource::PLL),
+//             clocks
+//         );
+//
+//         // Configuring APB1 prescaler to 4 is fine, but APB2 prescaler is still wrong
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_apb1_prescaler(APBPrescaler::DivideBy4),
+//             clocks
+//         );
+//         #[cfg(not(any(
+//             feature = "stm32f401",
+//             feature = "stm32f410",
+//             feature = "stm32f411",
+//             feature = "stm32f412",
+//             feature = "stm32f413",
+//             feature = "stm32f423"
+//         )))]
+//         check_and_panic!(
+//             Err(ErrorCode::SIZE),
+//             clocks.set_sys_clock_source(SysClockSource::PLL),
+//             clocks
+//         );
+//
+//         // Configuring APB2 prescaler to 2
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_apb2_prescaler(APBPrescaler::DivideBy2),
+//             clocks
+//         );
+//
+//         // Now the system clock source can be changed
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_sys_clock_source(SysClockSource::PLL),
+//             clocks
+//         );
+//         check_and_panic!(HIGH_FREQUENCY / 4, clocks.get_apb1_frequency_mhz(), clocks);
+//         check_and_panic!(HIGH_FREQUENCY / 2, clocks.get_apb2_frequency_mhz(), clocks);
+//
+//         // Revert to default system clock configuration
+//         set_default_configuration(clocks);
+//
+//         // This time, configure the AHB prescaler instead of APB prescalers
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_ahb_prescaler(AHBPrescaler::DivideBy4),
+//             clocks
+//         );
+//         check_and_panic!(Ok(()), clocks.pll.enable(), clocks);
+//         check_and_panic!(
+//             Ok(()),
+//             clocks.set_sys_clock_source(SysClockSource::PLL),
+//             clocks
+//         );
+//         check_and_panic!(HIGH_FREQUENCY / 4, clocks.get_ahb_frequency_mhz(), clocks);
+//         check_and_panic!(HIGH_FREQUENCY / 4, clocks.get_apb1_frequency_mhz(), clocks);
+//         check_and_panic!(HIGH_FREQUENCY / 4, clocks.get_apb2_frequency_mhz(), clocks);
+//
+//         // Revert to default configuration
+//         set_default_configuration(clocks);
+//
+//         debug!("Finished testing clocks struct. Everything is alright!");
+//         debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+//         debug!("");
+//     }
+//
+//     /// Test for the microcontroller clock outputs
+//     ///
+//     /// # Usage
+//     ///
+//     /// First, import the clock module:
+//     ///
+//     /// ```rust,ignore
+//     /// // This test assumes a STM32F429 chip
+//     /// use stm32f429zi::clocks;
+//     /// ```
+//     ///
+//     /// Then run the test:
+//     ///
+//     /// ```rust,ignore
+//     /// clocks::test::test_mco(&peripherals.stm32f4.clocks);
+//     /// ```
+//     pub fn test_mco<ChipSpecs: ChipSpecsTrait>(clocks: &Clocks<ChipSpecs>) {
+//         debug!("");
+//         debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+//         debug!("Testing MCOs...");
+//
+//         // Set MCO1 source to PLL
+//         assert_eq!(Ok(()), clocks.set_mco1_clock_source(MCOSource::PLL));
+//
+//         // Set MCO1 divider to 3
+//         assert_eq!(Ok(()), clocks.set_mco1_clock_divider(MCODivider::DivideBy3));
+//
+//         // Enable PLL
+//         assert_eq!(Ok(()), clocks.pll.enable());
+//
+//         // Attempting to change the divider while the PLL is running must fail
+//         assert_eq!(
+//             Err(ErrorCode::FAIL),
+//             clocks.set_mco1_clock_divider(MCODivider::DivideBy2)
+//         );
+//
+//         // Switch back to HSI
+//         assert_eq!(Ok(()), clocks.set_mco1_clock_source(MCOSource::HSI));
+//
+//         // Attempting to change the source to PLL when it is already enabled must fail
+//         assert_eq!(
+//             Err(ErrorCode::FAIL),
+//             clocks.set_mco1_clock_source(MCOSource::PLL)
+//         );
+//
+//         debug!("Finished testing MCOs. Everything is alright!");
+//         debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+//         debug!("");
+//     }
+//
+//     /// Run the entire test suite for all clocks
+//     pub fn run_all<ChipSpecs: ChipSpecsTrait>(clocks: &Clocks<ChipSpecs>) {
+//         debug!("");
+//         debug!("===============================================");
+//         debug!("Testing clocks...");
+//
+//         crate::clocks::hsi::tests::run(&clocks.hsi);
+//         crate::clocks::pll::tests::run(&clocks.pll);
+//         test_prescalers(clocks);
+//         test_clocks_struct(clocks);
+//         test_mco(clocks);
+//
+//         debug!("Finished testing clocks. Everything is alright!");
+//         debug!("===============================================");
+//         debug!("");
+//     }
+// }
+//

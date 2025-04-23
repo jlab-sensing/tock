@@ -159,7 +159,7 @@ register_bitfields![u32,
         /// PCLK1 prescaler flag (APB1)
         PPRE1F OFFSET(17) NUMBITS(1) [],
         /// HCLK1 prescaler flag (CPU, AHB1, and AHB2)
-        HPRE OFFSET(16) NUMBITS(1) [],
+        HPREF OFFSET(16) NUMBITS(1) [],
         /// Wake-up from Stop and CSS backup clock selection
         STOPWUICK OFFSET(15) NUMBITS(1) [],
         /// PCLK2 high-speed prescaler (APB2)
@@ -743,6 +743,11 @@ pub enum RtcClockSource {
     LSE,
     HSERTC,
 }
+
+pub(crate) const DEFAULT_PLLM_VALUE: PLLMDivider = PLLMDivider::DivideBy2;
+pub(crate) const DEFAULT_PLLN_VALUE: usize = PLLN_MULTIPLY_28;
+pub(crate) const DEFAULT_PLLP_VALUE: PLLPDivider = PLLPDivider::DivideBy8;
+pub(crate) const DEFAULT_PLLQ_VALUE: PLLQDivider = PLLQDivider::DivideBy8;
 
 impl Rcc {
     pub fn new() -> Self {
@@ -1407,6 +1412,7 @@ impl Rcc {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) enum PLLPDivider {
     DivideBy2 = 0b00001,
     DivideBy3 = 0b00010,
@@ -1441,6 +1447,45 @@ pub(crate) enum PLLPDivider {
     DivideBy32 = 0b11111,
 }
 
+impl From<PLLPDivider> for usize {
+    fn from(item: PLLPDivider) -> Self {
+        match item {
+            PLLPDivider::DivideBy2 => 2,
+            PLLPDivider::DivideBy3 => 3,
+            PLLPDivider::DivideBy4 => 4,
+            PLLPDivider::DivideBy5 => 5,
+            PLLPDivider::DivideBy6 => 6,
+            PLLPDivider::DivideBy7 => 7,
+            PLLPDivider::DivideBy8 => 8,
+            PLLPDivider::DivideBy9 => 9,
+            PLLPDivider::DivideBy10 => 10,
+            PLLPDivider::DivideBy11 => 11,
+            PLLPDivider::DivideBy12 => 12,
+            PLLPDivider::DivideBy13 => 13,
+            PLLPDivider::DivideBy14 => 14,
+            PLLPDivider::DivideBy15 => 15,
+            PLLPDivider::DivideBy16 => 16,
+            PLLPDivider::DivideBy17 => 17,
+            PLLPDivider::DivideBy18 => 18,
+            PLLPDivider::DivideBy19 => 19,
+            PLLPDivider::DivideBy20 => 20,
+            PLLPDivider::DivideBy21 => 21,
+            PLLPDivider::DivideBy22 => 22,
+            PLLPDivider::DivideBy23 => 23,
+            PLLPDivider::DivideBy24 => 24,
+            PLLPDivider::DivideBy25 => 25,
+            PLLPDivider::DivideBy26 => 26,
+            PLLPDivider::DivideBy27 => 27,
+            PLLPDivider::DivideBy28 => 28,
+            PLLPDivider::DivideBy29 => 29,
+            PLLPDivider::DivideBy30 => 30,
+            PLLPDivider::DivideBy31 => 31,
+            PLLPDivider::DivideBy32 => 32,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) enum PLLRDivider {
     DivideBy2 = 0b001,
     DivideBy3 = 0b010,
@@ -1451,6 +1496,21 @@ pub(crate) enum PLLRDivider {
     DivideBy8 = 0b111,
 }
 
+impl From<PLLRDivider> for usize {
+    fn from(item: PLLRDivider) -> Self {
+        match item {
+            PLLRDivider::DivideBy2 => 2,
+            PLLRDivider::DivideBy3 => 3,
+            PLLRDivider::DivideBy4 => 4,
+            PLLRDivider::DivideBy5 => 5,
+            PLLRDivider::DivideBy6 => 6,
+            PLLRDivider::DivideBy7 => 7,
+            PLLRDivider::DivideBy8 => 8,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) enum PLLQDivider {
     DivideBy2 = 0b001,
     DivideBy3 = 0b010,
@@ -1461,6 +1521,21 @@ pub(crate) enum PLLQDivider {
     DivideBy8 = 0b111,
 }
 
+impl From<PLLQDivider> for usize {
+    fn from(item: PLLQDivider) -> Self {
+        match item {
+            PLLQDivider::DivideBy2 => 2,
+            PLLQDivider::DivideBy3 => 3,
+            PLLQDivider::DivideBy4 => 4,
+            PLLQDivider::DivideBy5 => 5,
+            PLLQDivider::DivideBy6 => 6,
+            PLLQDivider::DivideBy7 => 7,
+            PLLQDivider::DivideBy8 => 8,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) enum PLLMDivider {
     DivideBy1 = 0b000,
     DivideBy2 = 0b001,
@@ -1470,6 +1545,21 @@ pub(crate) enum PLLMDivider {
     DivideBy6 = 0b101,
     DivideBy7 = 0b110,
     DivideBy8 = 0b111,
+}
+
+impl From<PLLMDivider> for usize {
+    fn from(item: PLLMDivider) -> Self {
+        match item {
+            PLLMDivider::DivideBy1 => 1,
+            PLLMDivider::DivideBy2 => 2,
+            PLLMDivider::DivideBy3 => 3,
+            PLLMDivider::DivideBy4 => 4,
+            PLLMDivider::DivideBy5 => 5,
+            PLLMDivider::DivideBy6 => 6,
+            PLLMDivider::DivideBy7 => 7,
+            PLLMDivider::DivideBy8 => 8,
+        }
+    }
 }
 
 // CHECKED [x]

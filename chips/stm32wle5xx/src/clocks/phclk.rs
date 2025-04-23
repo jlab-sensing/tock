@@ -19,50 +19,58 @@ pub enum PeripheralClockType {
     APB1(PCLK1),
     APB2(PCLK2),
     RTC,
-    PWR,
 }
 
 /// Peripherals clocked by HCLK1
 pub enum HCLK1 {
     DMA1,
     DMA2,
-    GPIOH,
-    GPIOG,
-    GPIOF,
-    GPIOE,
-    GPIOD,
-    GPIOC,
-    GPIOB,
-    GPIOA,
+    DMAMUX1,
+    CRC,
 }
 
 /// Peripherals clocked by HCLK3
 pub enum HCLK3 {
-    FMC,
+    PKA,
+    AES,
+    RNG,
+    HSEM,
+    FLASH,
 }
 
 /// Peripherals clocked by HCLK2
 pub enum HCLK2 {
-    RNG,
-    OTGFS,
+    GPIOA,
+    GPIOB,
+    GPIOC,
+    GPIOH,
 }
 
 /// Peripherals clocked by PCLK1
 pub enum PCLK1 {
     TIM2,
+    RTCAPB,
+    WWDG,
+    SPI2S2,
     USART2,
-    USART3,
-    SPI3,
     I2C1,
-    CAN1,
+    I2C2,
+    I2C3,
     DAC,
+    LPTIM1,
+    LPUART1,
+    LPTIM2,
+    LPTIM3,
 }
 
 /// Peripherals clocked by PCLK2
 pub enum PCLK2 {
+    ADC,
+    TIM1,
+    SPI1,
     USART1,
-    ADC1,
-    SYSCFG,
+    TIM16,
+    TIM17,
 }
 
 impl<'a> PeripheralClock<'a> {
@@ -115,7 +123,6 @@ impl<'a> PeripheralClock<'a> {
             }
             //TODO: implement clock frequency retrieval for RTC and PWR peripherals
             PeripheralClockType::RTC => todo!(),
-            PeripheralClockType::PWR => todo!(),
         }
     }
 }
@@ -127,38 +134,26 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
             PeripheralClockType::AHB1(ref v) => match v {
                 HCLK1::DMA1 => rcc.is_enabled_dma1_clock(),
                 HCLK1::DMA2 => rcc.is_enabled_dma2_clock(),
-                HCLK1::GPIOH => rcc.is_enabled_gpioh_clock(),
-                HCLK1::GPIOG => rcc.is_enabled_gpiog_clock(),
-                HCLK1::GPIOF => rcc.is_enabled_gpiof_clock(),
-                HCLK1::GPIOE => rcc.is_enabled_gpioe_clock(),
-                HCLK1::GPIOD => rcc.is_enabled_gpiod_clock(),
-                HCLK1::GPIOC => rcc.is_enabled_gpioc_clock(),
-                HCLK1::GPIOB => rcc.is_enabled_gpiob_clock(),
-                HCLK1::GPIOA => rcc.is_enabled_gpioa_clock(),
+                _ => unimplemented!(),
             },
             PeripheralClockType::AHB2(ref v) => match v {
-                HCLK2::RNG => rcc.is_enabled_rng_clock(),
-                HCLK2::OTGFS => rcc.is_enabled_otgfs_clock(),
+                _ => unimplemented!(),
             },
             PeripheralClockType::AHB3(ref v) => match v {
-                HCLK3::FMC => rcc.is_enabled_fmc_clock(),
+                _ => unimplemented!(),
             },
             PeripheralClockType::APB1(ref v) => match v {
                 PCLK1::TIM2 => rcc.is_enabled_tim2_clock(),
                 PCLK1::USART2 => rcc.is_enabled_usart2_clock(),
-                PCLK1::USART3 => rcc.is_enabled_usart3_clock(),
                 PCLK1::I2C1 => rcc.is_enabled_i2c1_clock(),
-                PCLK1::SPI3 => rcc.is_enabled_spi3_clock(),
-                PCLK1::CAN1 => rcc.is_enabled_can1_clock(),
                 PCLK1::DAC => rcc.is_enabled_dac_clock(),
+                _ => unimplemented!(),
             },
             PeripheralClockType::APB2(ref v) => match v {
                 PCLK2::USART1 => rcc.is_enabled_usart1_clock(),
-                PCLK2::ADC1 => rcc.is_enabled_adc1_clock(),
-                PCLK2::SYSCFG => rcc.is_enabled_syscfg_clock(),
+                _ => unimplemented!(),
             },
             PeripheralClockType::RTC => rcc.is_enabled_rtc_clock(),
-            PeripheralClockType::PWR => rcc.is_enabled_pwr_clock(),
         }
     }
 
@@ -172,41 +167,13 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 HCLK1::DMA2 => {
                     rcc.enable_dma2_clock();
                 }
-                HCLK1::GPIOH => {
-                    rcc.enable_gpioh_clock();
-                }
-                HCLK1::GPIOG => {
-                    rcc.enable_gpiog_clock();
-                }
-                HCLK1::GPIOF => {
-                    rcc.enable_gpiof_clock();
-                }
-                HCLK1::GPIOE => {
-                    rcc.enable_gpioe_clock();
-                }
-                HCLK1::GPIOD => {
-                    rcc.enable_gpiod_clock();
-                }
-                HCLK1::GPIOC => {
-                    rcc.enable_gpioc_clock();
-                }
-                HCLK1::GPIOB => {
-                    rcc.enable_gpiob_clock();
-                }
-                HCLK1::GPIOA => {
-                    rcc.enable_gpioa_clock();
-                }
+                _ => unimplemented!(),
             },
             PeripheralClockType::AHB2(ref v) => match v {
-                HCLK2::RNG => {
-                    rcc.enable_rng_clock();
-                }
-                HCLK2::OTGFS => {
-                    rcc.enable_otgfs_clock();
-                }
+                _ => unimplemented!(),
             },
             PeripheralClockType::AHB3(ref v) => match v {
-                HCLK3::FMC => rcc.enable_fmc_clock(),
+                _ => unimplemented!(),
             },
             PeripheralClockType::APB1(ref v) => match v {
                 PCLK1::TIM2 => {
@@ -215,35 +182,21 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 PCLK1::USART2 => {
                     rcc.enable_usart2_clock();
                 }
-                PCLK1::USART3 => {
-                    rcc.enable_usart3_clock();
-                }
                 PCLK1::I2C1 => {
                     rcc.enable_i2c1_clock();
-                }
-                PCLK1::SPI3 => {
-                    rcc.enable_spi3_clock();
-                }
-                PCLK1::CAN1 => {
-                    rcc.enable_can1_clock();
                 }
                 PCLK1::DAC => {
                     rcc.enable_dac_clock();
                 }
+                _ => unimplemented!(),
             },
             PeripheralClockType::APB2(ref v) => match v {
                 PCLK2::USART1 => {
                     rcc.enable_usart1_clock();
                 }
-                PCLK2::ADC1 => {
-                    rcc.enable_adc1_clock();
-                }
-                PCLK2::SYSCFG => {
-                    rcc.enable_syscfg_clock();
-                }
+                _ => unimplemented!(),
             },
             PeripheralClockType::RTC => rcc.enable_rtc_clock(RtcClockSource::LSI),
-            PeripheralClockType::PWR => rcc.enable_pwr_clock(),
         }
     }
 
@@ -257,41 +210,13 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 HCLK1::DMA2 => {
                     rcc.disable_dma2_clock();
                 }
-                HCLK1::GPIOH => {
-                    rcc.disable_gpioh_clock();
-                }
-                HCLK1::GPIOG => {
-                    rcc.disable_gpiog_clock();
-                }
-                HCLK1::GPIOF => {
-                    rcc.disable_gpiof_clock();
-                }
-                HCLK1::GPIOE => {
-                    rcc.disable_gpioe_clock();
-                }
-                HCLK1::GPIOD => {
-                    rcc.disable_gpiod_clock();
-                }
-                HCLK1::GPIOC => {
-                    rcc.disable_gpioc_clock();
-                }
-                HCLK1::GPIOB => {
-                    rcc.disable_gpiob_clock();
-                }
-                HCLK1::GPIOA => {
-                    rcc.disable_gpioa_clock();
-                }
+                _ => unimplemented!(),
             },
             PeripheralClockType::AHB2(ref v) => match v {
-                HCLK2::RNG => {
-                    rcc.disable_rng_clock();
-                }
-                HCLK2::OTGFS => {
-                    rcc.disable_otgfs_clock();
-                }
+                _ => unimplemented!(),
             },
             PeripheralClockType::AHB3(ref v) => match v {
-                HCLK3::FMC => rcc.disable_fmc_clock(),
+                _ => unimplemented!(),
             },
             PeripheralClockType::APB1(ref v) => match v {
                 PCLK1::TIM2 => {
@@ -300,35 +225,18 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 PCLK1::USART2 => {
                     rcc.disable_usart2_clock();
                 }
-                PCLK1::USART3 => {
-                    rcc.disable_usart3_clock();
-                }
-                PCLK1::I2C1 => {
-                    rcc.disable_i2c1_clock();
-                }
-                PCLK1::SPI3 => {
-                    rcc.disable_spi3_clock();
-                }
-                PCLK1::CAN1 => {
-                    rcc.disable_can1_clock();
-                }
                 PCLK1::DAC => {
                     rcc.disable_dac_clock();
                 }
+                _ => unimplemented!(),
             },
             PeripheralClockType::APB2(ref v) => match v {
                 PCLK2::USART1 => {
                     rcc.disable_usart1_clock();
                 }
-                PCLK2::ADC1 => {
-                    rcc.disable_adc1_clock();
-                }
-                PCLK2::SYSCFG => {
-                    rcc.disable_syscfg_clock();
-                }
+                _ => unimplemented!(),
             },
             PeripheralClockType::RTC => rcc.disable_rtc_clock(),
-            PeripheralClockType::PWR => rcc.disable_pwr_clock(),
         }
     }
 }

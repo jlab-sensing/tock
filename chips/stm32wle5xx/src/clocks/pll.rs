@@ -110,7 +110,7 @@ use crate::chip_specific::clock_constants;
 use crate::clocks::hsi::HSI_FREQUENCY_MHZ;
 use crate::rcc::Rcc;
 use crate::rcc::SysClockSource;
-use crate::rcc::{PllSource, PLLM, PLLP, PLLQ};
+use crate::rcc::{PLLMDivider, PLLPDivider, PLLQDivider, PllSource};
 use crate::rcc::{DEFAULT_PLLM_VALUE, DEFAULT_PLLN_VALUE, DEFAULT_PLLP_VALUE, DEFAULT_PLLQ_VALUE};
 
 use kernel::debug;
@@ -144,10 +144,11 @@ impl<'a, PllConstants: clock_constants::PllConstants> Pll<'a, PllConstants> {
     // An instance of the PLL clock.
     pub(in crate::clocks) fn new(rcc: &'a Rcc) -> Self {
         const PLLP: usize = match DEFAULT_PLLP_VALUE {
-            PLLP::DivideBy2 => 2,
-            PLLP::DivideBy4 => 4,
-            PLLP::DivideBy6 => 6,
-            PLLP::DivideBy8 => 8,
+            PLLPDivider::DivideBy2 => 2,
+            PLLPDivider::DivideBy4 => 4,
+            PLLPDivider::DivideBy6 => 6,
+            PLLPDivider::DivideBy8 => 8,
+            _ => unimplemented!(),
         };
         const PLLM: usize = DEFAULT_PLLM_VALUE as usize;
         const PLLQ: usize = DEFAULT_PLLQ_VALUE as usize;
@@ -164,15 +165,15 @@ impl<'a, PllConstants: clock_constants::PllConstants> Pll<'a, PllConstants> {
 
     // The caller must ensure the desired frequency lies between MIN_FREQ_MHZ and
     // MAX_FREQ_MHZ.  Otherwise, the return value makes no sense.
-    fn compute_pllp(desired_frequency_mhz: usize) -> PLLP {
+    fn compute_pllp(desired_frequency_mhz: usize) -> PLLPDivider {
         if desired_frequency_mhz < 55 {
-            PLLP::DivideBy8
+            PLLPDivider::DivideBy8
         } else if desired_frequency_mhz < 73 {
-            PLLP::DivideBy6
+            PLLPDivider::DivideBy6
         } else if desired_frequency_mhz < 109 {
-            PLLP::DivideBy4
+            PLLPDivider::DivideBy4
         } else {
-            PLLP::DivideBy2
+            PLLPDivider::DivideBy2
         }
     }
 
@@ -181,7 +182,7 @@ impl<'a, PllConstants: clock_constants::PllConstants> Pll<'a, PllConstants> {
     fn compute_plln(
         desired_frequency_mhz: usize,
         pll_source_clock_freq: usize,
-        pllp: PLLP,
+        pllp: PLLPDivider,
     ) -> usize {
         let vco_input_frequency: usize = pll_source_clock_freq / DEFAULT_PLLM_VALUE as usize;
         desired_frequency_mhz * Into::<usize>::into(pllp) / vco_input_frequency
@@ -189,17 +190,17 @@ impl<'a, PllConstants: clock_constants::PllConstants> Pll<'a, PllConstants> {
 
     // The caller must ensure the VCO output frequency lies between 100 and 432MHz. Otherwise, the
     // return value makes no sense.
-    fn compute_pllq(vco_output_frequency_mhz: usize) -> PLLQ {
+    fn compute_pllq(vco_output_frequency_mhz: usize) -> PLLQDivider {
         for pllq in 3..10 {
             if 48 * pllq >= vco_output_frequency_mhz {
                 return match pllq {
-                    3 => PLLQ::DivideBy3,
-                    4 => PLLQ::DivideBy4,
-                    5 => PLLQ::DivideBy5,
-                    6 => PLLQ::DivideBy6,
-                    7 => PLLQ::DivideBy7,
-                    8 => PLLQ::DivideBy8,
-                    _ => PLLQ::DivideBy9,
+                    3 => PLLQDivider::DivideBy3,
+                    4 => PLLQDivider::DivideBy4,
+                    5 => PLLQDivider::DivideBy5,
+                    6 => PLLQDivider::DivideBy6,
+                    7 => PLLQDivider::DivideBy7,
+                    8 => PLLQDivider::DivideBy8,
+                    _ => unimplemented!(),
                 };
             }
         }
@@ -247,7 +248,7 @@ impl<'a, PllConstants: clock_constants::PllConstants> Pll<'a, PllConstants> {
     /// not running.
     pub fn disable(&self) -> Result<(), ErrorCode> {
         // Can't disable the PLL clock when it is used as the system clock
-        if self.rcc.get_sys_clock_source() == SysClockSource::PLL {
+        if self.rcc.get_sys_clock_source() == SysClockSource::PLLR {
             return Err(ErrorCode::FAIL);
         }
 
@@ -420,342 +421,344 @@ impl<'a, PllConstants: clock_constants::PllConstants> Pll<'a, PllConstants> {
     }
 }
 
-/// Tests for the PLL clock
-///
-/// This module ensures that the PLL clock works as expected. If changes are brought to the PLL
-/// clock, ensure to run all the tests to see if anything is broken.
-///
-/// # Usage
-///
-/// First, import the [crate::clocks::pll] module inside the board main file:
-///
-/// ```rust,ignore
-/// use stm32f429zi::pll;
-/// ```
-/// To run all the available tests, add this line before **kernel::process::load_processes()**:
-///
-/// ```rust,ignore
-/// pll::tests::run(&peripherals.stm32f4.clocks.pll);
-/// ```
-///
-/// If everything works as expected, the following message should be printed on the kernel console:
-///
-/// ```text
-/// ===============================================
-/// Testing PLL...
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// Testing PLL configuration...
-/// Finished testing PLL configuration.
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// Testing PLL struct...
-/// Finished testing PLL struct.
-/// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-/// Finished testing PLL. Everything is alright!
-/// ===============================================
-/// ```
-///
-/// There is also the possibility to run a part of the test suite. Check the functions present in
-/// this module for more details.
-///
-/// # Errors
-///
-/// If there are any errors, open an issue ticket at <https://github.com/tock/tock>. Please provide the
-/// output of the test execution.
-pub mod tests {
-    use super::*;
-
-    // Depending on the default PLLM value, the computed PLLN value changes.
-    const MULTIPLIER: usize = match DEFAULT_PLLM_VALUE {
-        PLLM::DivideBy8 => 1,
-        PLLM::DivideBy16 => 2,
-    };
-
-    /// Test if the configuration parameters are correctly computed for a given frequency.
-    ///
-    /// # Usage
-    ///
-    /// ```rust,ignore
-    /// use stm32f429zi::pll; // Import the pll module
-    /// /* Code goes here */
-    /// pll::test::test_pll_config(&peripherals.stm32f4.pll); // Run the tests
-    /// ```
-    pub fn test_pll_config<PllConstants: clock_constants::PllConstants>() {
-        debug!("Testing PLL configuration...");
-
-        // 13 or 24MHz --> minimum value
-        let mut pllp = Pll::<PllConstants>::compute_pllp(PllConstants::MIN_FREQ_MHZ);
-        assert_eq!(PLLP::DivideBy8, pllp);
-        let mut plln =
-            Pll::<PllConstants>::compute_plln(PllConstants::MIN_FREQ_MHZ, HSI_FREQUENCY_MHZ, pllp);
-
-        #[cfg(not(feature = "stm32f401"))]
-        assert_eq!(52 * MULTIPLIER, plln);
-        #[cfg(feature = "stm32f401")]
-        assert_eq!(96 * MULTIPLIER, plln);
-
-        let mut vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        let mut pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-
-        #[cfg(not(feature = "stm32f401"))]
-        assert_eq!(PLLQ::DivideBy3, pllq);
-        #[cfg(feature = "stm32f401")]
-        assert_eq!(PLLQ::DivideBy4, pllq);
-
-        // 25MHz --> minimum required value for Ethernet devices
-        pllp = Pll::<PllConstants>::compute_pllp(25);
-        assert_eq!(PLLP::DivideBy8, pllp);
-        plln = Pll::<PllConstants>::compute_plln(25, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(100 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy5, pllq);
-
-        // 54MHz --> last frequency before PLLP becomes DivideBy6
-        pllp = Pll::<PllConstants>::compute_pllp(54);
-        assert_eq!(PLLP::DivideBy8, pllp);
-        plln = Pll::<PllConstants>::compute_plln(54, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(216 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy9, pllq);
-
-        // 55MHz --> PLLP becomes DivideBy6
-        pllp = Pll::<PllConstants>::compute_pllp(55);
-        assert_eq!(PLLP::DivideBy6, pllp);
-        plln = Pll::<PllConstants>::compute_plln(55, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(165 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy7, pllq);
-
-        // 70MHz --> Another value for PLLP::DivideBy6
-        pllp = Pll::<PllConstants>::compute_pllp(70);
-        assert_eq!(PLLP::DivideBy6, pllp);
-        plln = Pll::<PllConstants>::compute_plln(70, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(210 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy9, pllq);
-
-        // 72MHz --> last frequency before PLLP becomes DivideBy4
-        pllp = Pll::<PllConstants>::compute_pllp(72);
-        assert_eq!(PLLP::DivideBy6, pllp);
-        plln = Pll::<PllConstants>::compute_plln(72, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(216 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy9, pllq);
-
-        // 73MHz --> PLLP becomes DivideBy4
-        pllp = Pll::<PllConstants>::compute_pllp(73);
-        assert_eq!(PLLP::DivideBy4, pllp);
-        plln = Pll::<PllConstants>::compute_plln(73, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(146 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy7, pllq);
-
-        // 100MHz --> Another value for PLLP::DivideBy4
-        pllp = Pll::<PllConstants>::compute_pllp(100);
-        assert_eq!(PLLP::DivideBy4, pllp);
-        plln = Pll::<PllConstants>::compute_plln(100, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(200 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy9, pllq);
-
-        // 108MHz --> last frequency before PLLP becomes DivideBy2
-        pllp = Pll::<PllConstants>::compute_pllp(108);
-        assert_eq!(PLLP::DivideBy4, pllp);
-        plln = Pll::<PllConstants>::compute_plln(108, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(216 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy9, pllq);
-
-        // 109MHz --> PLLP becomes DivideBy2
-        pllp = Pll::<PllConstants>::compute_pllp(109);
-        assert_eq!(PLLP::DivideBy2, pllp);
-        plln = Pll::<PllConstants>::compute_plln(109, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(109 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy5, pllq);
-
-        // 125MHz --> Another value for PLLP::DivideBy2
-        pllp = Pll::<PllConstants>::compute_pllp(125);
-        assert_eq!(PLLP::DivideBy2, pllp);
-        plln = Pll::<PllConstants>::compute_plln(125, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(125 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy6, pllq);
-
-        // 180MHz --> Max frequency for the CPU
-        pllp = Pll::<PllConstants>::compute_pllp(180);
-        assert_eq!(PLLP::DivideBy2, pllp);
-        plln = Pll::<PllConstants>::compute_plln(180, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(180 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy8, pllq);
-
-        // 216MHz --> Max frequency for the PLL due to the VCO output frequency limit
-        pllp = Pll::<PllConstants>::compute_pllp(216);
-        assert_eq!(PLLP::DivideBy2, pllp);
-        plln = Pll::<PllConstants>::compute_plln(216, HSI_FREQUENCY_MHZ, pllp);
-        assert_eq!(216 * MULTIPLIER, plln);
-        vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
-        pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
-        assert_eq!(PLLQ::DivideBy9, pllq);
-
-        debug!("Finished testing PLL configuration.");
-    }
-
-    /// Check if the PLL works as expected.
-    ///
-    /// **NOTE:** it is highly recommended to call [test_pll_config]
-    /// first to check whether the configuration parameters are correctly computed.
-    ///
-    /// # Usage
-    ///
-    /// ```rust,ignore
-    /// use stm32f429zi::pll; // Import the PLL module
-    /// /* Code goes here */
-    /// pll::test::test_pll_struct(&peripherals.stm32f4.pll); // Run the tests
-    /// ```
-    pub fn test_pll_struct<'a, PllConstants: clock_constants::PllConstants>(
-        pll: &'a Pll<'a, PllConstants>,
-    ) {
-        debug!("Testing PLL struct...");
-        // Make sure the PLL clock is disabled
-        assert_eq!(Ok(()), pll.disable());
-        assert!(!pll.is_enabled());
-
-        // Attempting to configure the PLL with either too high or too low frequency
-        assert_eq!(
-            Err(ErrorCode::INVAL),
-            pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 12)
-        );
-        assert_eq!(
-            Err(ErrorCode::INVAL),
-            pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 217)
-        );
-
-        // Start the PLL with the default configuration.
-        assert_eq!(Ok(()), pll.enable());
-
-        // Make sure the PLL is enabled.
-        assert!(pll.is_enabled());
-
-        // By default, the PLL clock is set to 96MHz
-        assert_eq!(Some(96), pll.get_frequency_mhz());
-
-        // By default, the PLL48 clock is correctly calibrated
-        assert!(pll.is_pll48_calibrated());
-
-        // Impossible to configure the PLL clock once it is enabled.
-        assert_eq!(
-            Err(ErrorCode::FAIL),
-            pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 50)
-        );
-
-        // Stop the PLL in order to reconfigure it.
-        assert_eq!(Ok(()), pll.disable());
-
-        // Configure the PLL clock to run at 25MHz
-        assert_eq!(
-            Ok(()),
-            pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 25)
-        );
-
-        // Start the PLL with the new configuration
-        assert_eq!(Ok(()), pll.enable());
-
-        // get_frequency() method should reflect the new change
-        assert_eq!(Some(25), pll.get_frequency_mhz());
-
-        // Since 25 is not a multiple of 48, the PLL48 clock is not correctly calibrated
-        assert!(!pll.is_pll48_calibrated());
-
-        // The expected PLL48 clock value in this case should be approximately 40 MHz.
-        // It is actually exactly 40MHz in this particular case.
-        assert_eq!(Some(40), pll.get_frequency_mhz_pll48());
-
-        // Stop the PLL clock
-        assert_eq!(Ok(()), pll.disable());
-
-        // Attempting to get the frequency of the PLL clock when it is disabled should return None.
-        assert_eq!(None, pll.get_frequency_mhz());
-        // Same for PLL48 clock
-        assert_eq!(None, pll.get_frequency_mhz_pll48());
-
-        // Attempting to configure the PLL clock with a frequency multiple of 48MHz
-        assert_eq!(
-            Ok(()),
-            pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 144)
-        );
-        assert_eq!(Ok(()), pll.enable());
-        assert_eq!(Some(144), pll.get_frequency_mhz());
-
-        // PLL48 clock output should be correctly calibrated
-        assert!(pll.is_pll48_calibrated());
-        assert_eq!(Some(48), pll.get_frequency_mhz_pll48());
-
-        // Reconfigure the clock for 100MHz
-        assert_eq!(Ok(()), pll.disable());
-        assert_eq!(
-            Ok(()),
-            pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 100)
-        );
-        assert_eq!(Ok(()), pll.enable());
-        assert_eq!(Some(100), pll.get_frequency_mhz());
-
-        // In this case, the PLL48 clock is not correctly calibrated. Its frequency is
-        // approximately 44MHz.
-        assert!(!pll.is_pll48_calibrated());
-        assert_eq!(Some(44), pll.get_frequency_mhz_pll48());
-
-        // Configure the clock to 72MHz = 48MHz * 1.5
-        assert_eq!(Ok(()), pll.disable());
-        assert_eq!(
-            Ok(()),
-            pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 72)
-        );
-        assert_eq!(Ok(()), pll.enable());
-        assert_eq!(Some(72), pll.get_frequency_mhz());
-
-        // In this case, the PLL48 clock is correctly calibrated
-        assert!(pll.is_pll48_calibrated());
-        assert_eq!(Some(48), pll.get_frequency_mhz_pll48());
-
-        // Turn off the PLL clock
-        assert_eq!(Ok(()), pll.disable());
-        assert!(!pll.is_enabled());
-
-        debug!("Finished testing PLL struct.");
-    }
-
-    /// Run the entire test suite.
-    ///
-    /// # Usage
-    ///
-    /// ```rust,ignore
-    /// use stm32f429zi::pll; // Import the PLL module
-    /// /* Code goes here */
-    /// pll::test::run(&peripherals.stm32f4.pll); // Run the tests
-    /// ```
-    pub fn run<'a, PllConstants: clock_constants::PllConstants>(pll: &'a Pll<'a, PllConstants>) {
-        debug!("");
-        debug!("===============================================");
-        debug!("Testing PLL...");
-        debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-        test_pll_config::<PllConstants>();
-        debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-        test_pll_struct(pll);
-        debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-        debug!("Finished testing PLL. Everything is alright!");
-        debug!("===============================================");
-        debug!("");
-    }
-}
+// Tests for the PLL clock
+//
+// This module ensures that the PLL clock works as expected. If changes are brought to the PLL
+// clock, ensure to run all the tests to see if anything is broken.
+//
+// # Usage
+//
+// First, import the [crate::clocks::pll] module inside the board main file:
+//
+// ```rust,ignore
+// use stm32f429zi::pll;
+// ```
+// To run all the available tests, add this line before **kernel::process::load_processes()**:
+//
+// ```rust,ignore
+// pll::tests::run(&peripherals.stm32f4.clocks.pll);
+// ```
+//
+// If everything works as expected, the following message should be printed on the kernel console:
+//
+// ```text
+// ===============================================
+// Testing PLL...
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Testing PLL configuration...
+// Finished testing PLL configuration.
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Testing PLL struct...
+// Finished testing PLL struct.
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Finished testing PLL. Everything is alright!
+// ===============================================
+// ```
+//
+// There is also the possibility to run a part of the test suite. Check the functions present in
+// this module for more details.
+//
+// # Errors
+//
+// If there are any errors, open an issue ticket at <https://github.com/tock/tock>. Please provide the
+// output of the test execution.
+// TODO ADD TESTS BACK
+// pub mod tests {
+//     use super::*;
+//
+//     // Depending on the default PLLM value, the computed PLLN value changes.
+//     const MULTIPLIER: usize = match DEFAULT_PLLM_VALUE {
+//         PLLMDivider::DivideBy8 => 1,
+//         PLLMDivider::DivideBy16 => 2,
+//     };
+//
+//     /// Test if the configuration parameters are correctly computed for a given frequency.
+//     ///
+//     /// # Usage
+//     ///
+//     /// ```rust,ignore
+//     /// use stm32f429zi::pll; // Import the pll module
+//     /// /* Code goes here */
+//     /// pll::test::test_pll_config(&peripherals.stm32f4.pll); // Run the tests
+//     /// ```
+//     pub fn test_pll_config<PllConstants: clock_constants::PllConstants>() {
+//         debug!("Testing PLL configuration...");
+//
+//         // 13 or 24MHz --> minimum value
+//         let mut pllp = Pll::<PllConstants>::compute_pllp(PllConstants::MIN_FREQ_MHZ);
+//         assert_eq!(PLLPDivider::DivideBy8, pllp);
+//         let mut plln =
+//             Pll::<PllConstants>::compute_plln(PllConstants::MIN_FREQ_MHZ, HSI_FREQUENCY_MHZ, pllp);
+//
+//         #[cfg(not(feature = "stm32f401"))]
+//         assert_eq!(52 * MULTIPLIER, plln);
+//         #[cfg(feature = "stm32f401")]
+//         assert_eq!(96 * MULTIPLIER, plln);
+//
+//         let mut vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         let mut pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//
+//         #[cfg(not(feature = "stm32f401"))]
+//         assert_eq!(PLLQ::DivideBy3, pllq);
+//         #[cfg(feature = "stm32f401")]
+//         assert_eq!(PLLQ::DivideBy4, pllq);
+//
+//         // 25MHz --> minimum required value for Ethernet devices
+//         pllp = Pll::<PllConstants>::compute_pllp(25);
+//         assert_eq!(PLLP::DivideBy8, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(25, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(100 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy5, pllq);
+//
+//         // 54MHz --> last frequency before PLLP becomes DivideBy6
+//         pllp = Pll::<PllConstants>::compute_pllp(54);
+//         assert_eq!(PLLP::DivideBy8, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(54, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(216 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy9, pllq);
+//
+//         // 55MHz --> PLLP becomes DivideBy6
+//         pllp = Pll::<PllConstants>::compute_pllp(55);
+//         assert_eq!(PLLP::DivideBy6, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(55, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(165 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy7, pllq);
+//
+//         // 70MHz --> Another value for PLLP::DivideBy6
+//         pllp = Pll::<PllConstants>::compute_pllp(70);
+//         assert_eq!(PLLP::DivideBy6, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(70, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(210 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy9, pllq);
+//
+//         // 72MHz --> last frequency before PLLP becomes DivideBy4
+//         pllp = Pll::<PllConstants>::compute_pllp(72);
+//         assert_eq!(PLLP::DivideBy6, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(72, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(216 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy9, pllq);
+//
+//         // 73MHz --> PLLP becomes DivideBy4
+//         pllp = Pll::<PllConstants>::compute_pllp(73);
+//         assert_eq!(PLLP::DivideBy4, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(73, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(146 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy7, pllq);
+//
+//         // 100MHz --> Another value for PLLP::DivideBy4
+//         pllp = Pll::<PllConstants>::compute_pllp(100);
+//         assert_eq!(PLLP::DivideBy4, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(100, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(200 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy9, pllq);
+//
+//         // 108MHz --> last frequency before PLLP becomes DivideBy2
+//         pllp = Pll::<PllConstants>::compute_pllp(108);
+//         assert_eq!(PLLP::DivideBy4, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(108, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(216 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy9, pllq);
+//
+//         // 109MHz --> PLLP becomes DivideBy2
+//         pllp = Pll::<PllConstants>::compute_pllp(109);
+//         assert_eq!(PLLP::DivideBy2, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(109, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(109 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy5, pllq);
+//
+//         // 125MHz --> Another value for PLLP::DivideBy2
+//         pllp = Pll::<PllConstants>::compute_pllp(125);
+//         assert_eq!(PLLP::DivideBy2, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(125, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(125 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy6, pllq);
+//
+//         // 180MHz --> Max frequency for the CPU
+//         pllp = Pll::<PllConstants>::compute_pllp(180);
+//         assert_eq!(PLLP::DivideBy2, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(180, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(180 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy8, pllq);
+//
+//         // 216MHz --> Max frequency for the PLL due to the VCO output frequency limit
+//         pllp = Pll::<PllConstants>::compute_pllp(216);
+//         assert_eq!(PLLP::DivideBy2, pllp);
+//         plln = Pll::<PllConstants>::compute_plln(216, HSI_FREQUENCY_MHZ, pllp);
+//         assert_eq!(216 * MULTIPLIER, plln);
+//         vco_output_frequency_mhz = HSI_FREQUENCY_MHZ / DEFAULT_PLLM_VALUE as usize * plln;
+//         pllq = Pll::<PllConstants>::compute_pllq(vco_output_frequency_mhz);
+//         assert_eq!(PLLQ::DivideBy9, pllq);
+//
+//         debug!("Finished testing PLL configuration.");
+//     }
+//
+//     /// Check if the PLL works as expected.
+//     ///
+//     /// **NOTE:** it is highly recommended to call [test_pll_config]
+//     /// first to check whether the configuration parameters are correctly computed.
+//     ///
+//     /// # Usage
+//     ///
+//     /// ```rust,ignore
+//     /// use stm32f429zi::pll; // Import the PLL module
+//     /// /* Code goes here */
+//     /// pll::test::test_pll_struct(&peripherals.stm32f4.pll); // Run the tests
+//     /// ```
+//     pub fn test_pll_struct<'a, PllConstants: clock_constants::PllConstants>(
+//         pll: &'a Pll<'a, PllConstants>,
+//     ) {
+//         debug!("Testing PLL struct...");
+//         // Make sure the PLL clock is disabled
+//         assert_eq!(Ok(()), pll.disable());
+//         assert!(!pll.is_enabled());
+//
+//         // Attempting to configure the PLL with either too high or too low frequency
+//         assert_eq!(
+//             Err(ErrorCode::INVAL),
+//             pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 12)
+//         );
+//         assert_eq!(
+//             Err(ErrorCode::INVAL),
+//             pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 217)
+//         );
+//
+//         // Start the PLL with the default configuration.
+//         assert_eq!(Ok(()), pll.enable());
+//
+//         // Make sure the PLL is enabled.
+//         assert!(pll.is_enabled());
+//
+//         // By default, the PLL clock is set to 96MHz
+//         assert_eq!(Some(96), pll.get_frequency_mhz());
+//
+//         // By default, the PLL48 clock is correctly calibrated
+//         assert!(pll.is_pll48_calibrated());
+//
+//         // Impossible to configure the PLL clock once it is enabled.
+//         assert_eq!(
+//             Err(ErrorCode::FAIL),
+//             pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 50)
+//         );
+//
+//         // Stop the PLL in order to reconfigure it.
+//         assert_eq!(Ok(()), pll.disable());
+//
+//         // Configure the PLL clock to run at 25MHz
+//         assert_eq!(
+//             Ok(()),
+//             pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 25)
+//         );
+//
+//         // Start the PLL with the new configuration
+//         assert_eq!(Ok(()), pll.enable());
+//
+//         // get_frequency() method should reflect the new change
+//         assert_eq!(Some(25), pll.get_frequency_mhz());
+//
+//         // Since 25 is not a multiple of 48, the PLL48 clock is not correctly calibrated
+//         assert!(!pll.is_pll48_calibrated());
+//
+//         // The expected PLL48 clock value in this case should be approximately 40 MHz.
+//         // It is actually exactly 40MHz in this particular case.
+//         assert_eq!(Some(40), pll.get_frequency_mhz_pll48());
+//
+//         // Stop the PLL clock
+//         assert_eq!(Ok(()), pll.disable());
+//
+//         // Attempting to get the frequency of the PLL clock when it is disabled should return None.
+//         assert_eq!(None, pll.get_frequency_mhz());
+//         // Same for PLL48 clock
+//         assert_eq!(None, pll.get_frequency_mhz_pll48());
+//
+//         // Attempting to configure the PLL clock with a frequency multiple of 48MHz
+//         assert_eq!(
+//             Ok(()),
+//             pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 144)
+//         );
+//         assert_eq!(Ok(()), pll.enable());
+//         assert_eq!(Some(144), pll.get_frequency_mhz());
+//
+//         // PLL48 clock output should be correctly calibrated
+//         assert!(pll.is_pll48_calibrated());
+//         assert_eq!(Some(48), pll.get_frequency_mhz_pll48());
+//
+//         // Reconfigure the clock for 100MHz
+//         assert_eq!(Ok(()), pll.disable());
+//         assert_eq!(
+//             Ok(()),
+//             pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 100)
+//         );
+//         assert_eq!(Ok(()), pll.enable());
+//         assert_eq!(Some(100), pll.get_frequency_mhz());
+//
+//         // In this case, the PLL48 clock is not correctly calibrated. Its frequency is
+//         // approximately 44MHz.
+//         assert!(!pll.is_pll48_calibrated());
+//         assert_eq!(Some(44), pll.get_frequency_mhz_pll48());
+//
+//         // Configure the clock to 72MHz = 48MHz * 1.5
+//         assert_eq!(Ok(()), pll.disable());
+//         assert_eq!(
+//             Ok(()),
+//             pll.set_frequency_mhz(PllSource::HSI, HSI_FREQUENCY_MHZ, 72)
+//         );
+//         assert_eq!(Ok(()), pll.enable());
+//         assert_eq!(Some(72), pll.get_frequency_mhz());
+//
+//         // In this case, the PLL48 clock is correctly calibrated
+//         assert!(pll.is_pll48_calibrated());
+//         assert_eq!(Some(48), pll.get_frequency_mhz_pll48());
+//
+//         // Turn off the PLL clock
+//         assert_eq!(Ok(()), pll.disable());
+//         assert!(!pll.is_enabled());
+//
+//         debug!("Finished testing PLL struct.");
+//     }
+//
+//     /// Run the entire test suite.
+//     ///
+//     /// # Usage
+//     ///
+//     /// ```rust,ignore
+//     /// use stm32f429zi::pll; // Import the PLL module
+//     /// /* Code goes here */
+//     /// pll::test::run(&peripherals.stm32f4.pll); // Run the tests
+//     /// ```
+//     pub fn run<'a, PllConstants: clock_constants::PllConstants>(pll: &'a Pll<'a, PllConstants>) {
+//         debug!("");
+//         debug!("===============================================");
+//         debug!("Testing PLL...");
+//         debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+//         test_pll_config::<PllConstants>();
+//         debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+//         test_pll_struct(pll);
+//         debug!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+//         debug!("Finished testing PLL. Everything is alright!");
+//         debug!("===============================================");
+//         debug!("");
+//     }
+// }
+//
