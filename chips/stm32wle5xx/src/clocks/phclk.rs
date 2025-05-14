@@ -170,6 +170,12 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 _ => unimplemented!(),
             },
             PeripheralClockType::AHB2(ref v) => match v {
+                HCLK2::GPIOA => {
+                    rcc.enable_gpioa_clock();
+                }
+                HCLK2::GPIOB => {
+                    rcc.enable_gpiob_clock();
+                }
                 _ => unimplemented!(),
             },
             PeripheralClockType::AHB3(ref v) => match v {

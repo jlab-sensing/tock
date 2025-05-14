@@ -12,16 +12,19 @@
 #![cfg_attr(not(doc), no_main)]
 #![deny(missing_docs)]
 
-use core::ptr::{addr_of, addr_of_mut};
+use core::ptr::{addr_of, addr_of_mut, write_volatile};
 
+use capsules_core::gpio;
 use components::gpio::GpioComponent;
 use kernel::capabilities;
 use kernel::component::Component;
-use kernel::hil::led::LedHigh;
+use kernel::hil::gpio::Configure;
+use kernel::hil::led::{Led, LedHigh};
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::{create_capability, debug, static_init};
 use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
+use stm32wle5jc::gpio::{PinId, PortId};
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 
 /// Support routines for debugging I/O.
@@ -52,7 +55,7 @@ struct SeeedStudioLoraE5Hf {
     led: &'static capsules_core::led::LedDriver<
         'static,
         LedHigh<'static, stm32wle5jc::gpio::Pin<'static>>,
-        3,
+        1,
     >,
     // gpio: &'static capsules_core::gpio::GPIO<'static, stm32f429zi::gpio::Pin<'static>>,
     scheduler: &'static RoundRobinSched<'static>,
@@ -297,15 +300,47 @@ pub unsafe fn main() {
         create_capability!(capabilities::ProcessManagementCapability);
 
     // LEDs
+    /*
+           static void MX_GPIO_Init(void)
+       {
+       GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+       /* GPIO Ports Clock Enable */
+       __HAL_RCC_GPIOB_CLK_ENABLE();
+
+       /*Configure GPIO pin Output Level */
+       HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
+
+       /*Configure GPIO pin : PB5 */
+       GPIO_InitStruct.Pin = GPIO_PIN_5;
+       GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+       GPIO_InitStruct.Pull = GPIO_NOPULL;
+       GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+       HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+       }
+
+       /* USER CODE BEGIN 4 */
+       int32_t LED_control(int value) {
+       HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, value);
+       return 0;
+    */
 
     // Clock to all GPIO Ports is enabled in `set_pin_primary_functions()`
     let gpio_ports = &base_peripherals.gpio_ports;
+    gpio_ports.get_port_from_port_id(PortId::B).enable_clock();
+    gpio_ports.get_port_from_port_id(PortId::A).enable_clock();
+
+    let led2 = LedHigh::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PA05).unwrap());
+
+    led2.init();
+
+    // turn on leds
+    led2.on();
 
     let led = components::led::LedsComponent::new().finalize(components::led_component_static!(
         LedHigh<'static, stm32wle5jc::gpio::Pin>,
-        LedHigh::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PB15).unwrap()),
-        LedHigh::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PB09).unwrap()),
-        LedHigh::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PB11).unwrap()),
+        LedHigh::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PA05).unwrap()),
     ));
 
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
@@ -318,6 +353,8 @@ pub unsafe fn main() {
     };
 
     // debug!("Initialization complete. Entering main loop");
+
+    led2.on();
 
     // These symbols are defined in the linker script.
     extern "C" {

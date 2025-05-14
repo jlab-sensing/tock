@@ -410,10 +410,10 @@ const GPIOC_BASE: StaticRef<GpioRegisters> =
 */
 
 const GPIOB_BASE: StaticRef<GpioRegisters> =
-    unsafe { StaticRef::new(0x40020400 as *const GpioRegisters) };
+    unsafe { StaticRef::new(0x48000400 as *const GpioRegisters) };
 
 const GPIOA_BASE: StaticRef<GpioRegisters> =
-    unsafe { StaticRef::new(0x40020000 as *const GpioRegisters) };
+    unsafe { StaticRef::new(0x48000000 as *const GpioRegisters) };
 
 /// STM32WLE5xx has eight GPIO ports labeled from A-H [^1]. This is represented
 /// by three bits.
