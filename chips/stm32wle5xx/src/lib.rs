@@ -12,13 +12,17 @@
 
 pub mod chip;
 pub mod chip_specific;
+pub mod nvic;
 
 // Peripherals
+pub mod dma;
 pub mod gpio;
 pub mod rcc;
+pub mod usart;
 
 // Clocks
 pub mod clocks;
+// pub mod syscfg;
 
 use cortexm4f::{initialize_ram_jump_to_main, unhandled_interrupt, CortexM4F, CortexMVariant};
 
