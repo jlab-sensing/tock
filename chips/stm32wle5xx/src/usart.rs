@@ -13,6 +13,8 @@ use kernel::utilities::registers::{register_bitfields, ReadOnly, ReadWrite};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
 
+use crate::clocks::clocks::Stm32wle5xxClocks;
+use crate::clocks::phclk;
 use crate::rcc;
 
 /// Universal synchronous asynchronous receiver transmitter
@@ -145,10 +147,6 @@ register_bitfields![u32,
         TCBGTIE OFFSET(24) NUMBITS(1) [],
         /// TXFIFO threshold interrupt enable
         TXFTIE OFFSET(23) NUMBITS(1) [],
-        /// Wakeup from low-power mode interrupt enable
-        WUFIE OFFSET(22) NUMBITS(1) [],
-        /// Wakeup from low-power mode interrupt flag selection
-        WUS OFFSET(20) NUMBITS(2) [],
         /// Wakeup from Stop mode interrupt enable
         WUFIE OFFSET(22) NUMBITS(1) [],
         /// Wakeup from Stop mode interrupt flag selection
@@ -272,14 +270,6 @@ register_bitfields![u32,
         WUCF OFFSET(20) NUMBITS(1) [],
         /// Character match clear flag
         CMCF OFFSET(17) NUMBITS(1) [],
-        /// SPI Slave underrun clear flag
-
-
-
-        /// Receive enable acknowledge flag
-        REACK OFFSET(22) NUMBITS(1) [],
-        /// Transmit enable acknowledge flag
-        TEACK OFFSET(21) NUMBITS(1) [],
         /// Wakeup from Stop mode flag
         UDRCF OFFSET(13) NUMBITS(1) [],
         /// End of block clear flag
@@ -386,31 +376,21 @@ impl<'a> Usart<'a> {
         }
     }
 
-    pub fn new_usart1(rcc: &'a rcc::Rcc) -> Self {
+    pub fn new_usart1(rcc: &'a dyn Stm32wle5xxClocks) -> Self {
         Self::new(
             USART1_BASE,
-            UsartClock(rcc::PeripheralClock::new(
-                rcc::PeripheralClockType::APB2(rcc::PCLK2::USART1),
+            UsartClock(phclk::PeripheralClock::new(
+                phclk::PeripheralClockType::APB2(phclk::PCLK2::USART1),
                 rcc,
             )),
         )
     }
 
-    pub fn new_usart2(rcc: &'a rcc::Rcc) -> Self {
+    pub fn new_usart2(rcc: &'a dyn Stm32wle5xxClocks) -> Self {
         Self::new(
-            USART2_BASE,
-            UsartClock(rcc::PeripheralClock::new(
-                rcc::PeripheralClockType::APB1(rcc::PCLK1::USART2),
-                rcc,
-            )),
-        )
-    }
-
-    pub fn new_usart3(rcc: &'a rcc::Rcc) -> Self {
-        Self::new(
-            USART3_BASE,
-            UsartClock(rcc::PeripheralClock::new(
-                rcc::PeripheralClockType::APB1(rcc::PCLK1::USART3),
+            USART1_BASE,
+            UsartClock(phclk::PeripheralClock::new(
+                phclk::PeripheralClockType::APB1(phclk::PCLK1::USART2),
                 rcc,
             )),
         )
@@ -640,8 +620,7 @@ impl hil::uart::Configure for Usart<'_> {
         // to Table 159 of reference manual, the value for BRR is 69.444 (0x45)
         // DIV_Fraction = 0x5
         // DIV_Mantissa = 0x4
-        self.registers.brr.modify(BRR::DIV_Fraction.val(0x5_u32));
-        self.registers.brr.modify(BRR::DIV_Mantissa.val(0x4_u32));
+        self.registers.brr.modify(BRR::BRR.val(0x45_u32));
 
         // Enable transmit block
         self.registers.cr1.modify(CR1::TE::SET);
@@ -700,7 +679,7 @@ impl<'a> hil::uart::Receive<'a> for Usart<'a> {
     }
 }
 
-struct UsartClock<'a>(rcc::PeripheralClock<'a>);
+struct UsartClock<'a>(phclk::PeripheralClock<'a>);
 
 impl ClockInterface for UsartClock<'_> {
     fn is_enabled(&self) -> bool {
