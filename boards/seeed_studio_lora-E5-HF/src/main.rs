@@ -245,15 +245,15 @@ unsafe fn set_pin_primary_functions(
 */
 
 /// Helper function for miscellaneous peripheral functions
-// unsafe fn setup_peripherals(tim2: &stm32f429zi::tim2::Tim2) {
-//     // USART1 IRQn is 37
-//     cortexm4::nvic::Nvic::new(stm32f429zi::nvic::USART1).enable();
-//
-//     // TIM2 IRQn is 28
-//     tim2.enable_clock();
-//     tim2.start();
-//     cortexm4::nvic::Nvic::new(stm32f429zi::nvic::TIM2).enable();
-// }
+unsafe fn setup_peripherals() {
+    // USART1 IRQn is 36
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::USART1).enable();
+
+    // TIM2 IRQn is 28
+    // tim2.enable_clock();
+    // tim2.start();
+    // cortexm4::nvic::Nvic::new(stm32f429zi::nvic::TIM2).enable();
+}
 
 /// Statically initialize the core peripherals for the chip.
 ///
@@ -295,6 +295,8 @@ pub unsafe fn main() {
         stm32wle5jc::chip::Stm32wle5xx::new(peripherals)
     );
     CHIP = Some(chip);
+
+    setup_peripherals();
 
     // Create capabilities that the board needs to call certain protected kernel
     // functions.
@@ -340,6 +342,10 @@ pub unsafe fn main() {
     components::debug_writer::DebugWriterComponent::new(uart_mux)
         .finalize(components::debug_writer_component_static!());
 
+    let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
+        .finalize(components::process_printer_text_component_static!());
+    PROCESS_PRINTER = Some(process_printer);
+
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
@@ -349,7 +355,7 @@ pub unsafe fn main() {
         console,
     };
 
-    debug!("Initialization complete. Entering main loop");
+    debug!("Initialization complete. Entering main loop...");
     // These symbols are defined in the linker script.
     extern "C" {
         /// Beginning of the ROM region containing app images.

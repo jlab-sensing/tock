@@ -38,6 +38,8 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
     // Setup any circular dependencies and register deferred calls
     pub fn setup_circular_deps(&'static self) {
         self.gpio_ports.setup_circular_deps();
+        kernel::deferred_call::DeferredCallClient::register(&self.usart1);
+        kernel::deferred_call::DeferredCallClient::register(&self.usart2);
     }
 }
 
