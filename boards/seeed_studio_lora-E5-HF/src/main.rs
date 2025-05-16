@@ -14,12 +14,12 @@
 
 use core::ptr::{addr_of, addr_of_mut, write_volatile};
 
-use capsules_core::gpio;
+use capsules_core::{gpio, led};
 use components::gpio::GpioComponent;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::hil::gpio::Configure;
-use kernel::hil::led::{Led, LedHigh};
+use kernel::hil::led::{Led, LedHigh, LedLow};
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::{create_capability, debug, static_init};
@@ -40,6 +40,9 @@ static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS]
 static mut CHIP: Option<&'static stm32wle5jc::chip::Stm32wle5xx<Stm32wle5jcDefaultPeripherals>> =
     None;
 
+static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
+    None;
+
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
@@ -52,11 +55,11 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
 struct SeeedStudioLoraE5Hf {
-    led: &'static capsules_core::led::LedDriver<
-        'static,
-        LedHigh<'static, stm32wle5jc::gpio::Pin<'static>>,
-        1,
-    >,
+    //led: &'static capsules_core::led::LedDriver<
+    //    'static,
+    //    LedHigh<'static, stm32wle5jc::gpio::Pin<'static>>,
+    //    1,
+    //>,
     // gpio: &'static capsules_core::gpio::GPIO<'static, stm32f429zi::gpio::Pin<'static>>,
     scheduler: &'static RoundRobinSched<'static>,
     systick: cortexm4::systick::SysTick,
@@ -70,7 +73,7 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Hf {
     {
         match driver_num {
             // capsules_core::console::DRIVER_NUM => f(Some(self.console)),
-            capsules_core::led::DRIVER_NUM => f(Some(self.led)),
+            //capsules_core::led::DRIVER_NUM => f(Some(self.led)),
             // capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             // kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             // capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
@@ -299,63 +302,20 @@ pub unsafe fn main() {
     let process_management_capability =
         create_capability!(capabilities::ProcessManagementCapability);
 
-    // LEDs
-    /*
-           static void MX_GPIO_Init(void)
-       {
-       GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-       /* GPIO Ports Clock Enable */
-       __HAL_RCC_GPIOB_CLK_ENABLE();
-
-       /*Configure GPIO pin Output Level */
-       HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
-
-       /*Configure GPIO pin : PB5 */
-       GPIO_InitStruct.Pin = GPIO_PIN_5;
-       GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-       GPIO_InitStruct.Pull = GPIO_NOPULL;
-       GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-       HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-       }
-
-       /* USER CODE BEGIN 4 */
-       int32_t LED_control(int value) {
-       HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, value);
-       return 0;
-    */
-
     // Clock to all GPIO Ports is enabled in `set_pin_primary_functions()`
     let gpio_ports = &base_peripherals.gpio_ports;
     gpio_ports.get_port_from_port_id(PortId::B).enable_clock();
     gpio_ports.get_port_from_port_id(PortId::A).enable_clock();
 
-    let led2 = LedHigh::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PA05).unwrap());
-
-    led2.init();
-
-    // turn on leds
-    led2.on();
-
-    let led = components::led::LedsComponent::new().finalize(components::led_component_static!(
-        LedHigh<'static, stm32wle5jc::gpio::Pin>,
-        LedHigh::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PA05).unwrap()),
-    ));
-
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
-        led: led,
         scheduler,
         systick: cortexm4::systick::SysTick::new(),
     };
 
     // debug!("Initialization complete. Entering main loop");
-
-    led2.on();
-
     // These symbols are defined in the linker script.
     extern "C" {
         /// Beginning of the ROM region containing app images.
