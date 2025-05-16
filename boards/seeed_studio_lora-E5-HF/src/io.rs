@@ -8,13 +8,17 @@ use core::ptr::addr_of;
 use core::ptr::addr_of_mut;
 
 use capsules_core::gpio;
+use capsules_system::process_printer;
 use kernel::debug;
 use kernel::debug::panic_blink_forever;
 use kernel::debug::IoWrite;
 use kernel::hil::led;
 
 use kernel::hil::led::Led;
+use kernel::hil::uart;
+use kernel::hil::uart::Configure;
 use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
+use stm32wle5jc::clocks;
 use stm32wle5jc::gpio::PinId;
 
 use crate::CHIP;
@@ -48,7 +52,28 @@ impl Write for Writer {
 
 impl IoWrite for Writer {
     fn write(&mut self, buf: &[u8]) -> usize {
-        unimplemented!()
+        let rcc = stm32wle5jc::rcc::Rcc::new();
+        let clocks: clocks::Clocks<Stm32wle5jcSpecs> = clocks::Clocks::new(&rcc);
+        let usart = stm32wle5jc::usart::Usart::new_usart1(&clocks);
+
+        if !self.initialized {
+            self.initialized = true;
+
+            let _ = usart.configure(uart::Parameters {
+                baud_rate: 115200,
+                stop_bits: uart::StopBits::One,
+                parity: uart::Parity::None,
+                hw_flow_control: false,
+                width: uart::Width::Eight,
+            });
+        }
+
+        let mut written = 0;
+        for byte in buf {
+            usart.send_byte(*byte);
+            written += 1;
+        }
+        written
     }
 }
 
@@ -74,6 +99,36 @@ pub unsafe fn panic_fmt(info: &PanicInfo) -> ! {
     pin.set_ports_ref(&gpio_ports);
     let led = &mut led::LedLow::new(&pin);
     led.init();
+
+    // USART1: PB6=TX , PB7=RX
+    gpio_ports.get_pin(PinId::PB06).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
+    });
+
+    gpio_ports.get_pin(PinId::PB07).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
+    });
+
+    let usart = stm32wle5jc::usart::Usart::new_usart1(&clocks);
+    usart.enable_clock();
+    let _ = usart.configure(uart::Parameters {
+        baud_rate: 115200,
+        stop_bits: uart::StopBits::One,
+        parity: uart::Parity::None,
+        hw_flow_control: false,
+        width: uart::Width::Eight,
+    });
+
+    kernel::debug::panic_print(
+        &mut *addr_of_mut!(WRITER),
+        info,
+        &cortexm4::support::nop,
+        &*addr_of!(PROCESSES),
+        &*addr_of!(CHIP),
+        &*addr_of!(PROCESS_PRINTER),
+    );
 
     // Unique LED blink pattern for panic
     loop {

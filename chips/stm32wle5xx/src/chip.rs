@@ -10,6 +10,7 @@ use kernel::platform::chip::Chip;
 use kernel::platform::chip::InterruptService;
 
 use crate::chip_specific::chip_specs::ChipSpecs as ChipSpecsTrait;
+use crate::nvic;
 
 pub struct Stm32wle5xx<'a, I: InterruptService + 'a> {
     mpu: cortexm4f::mpu::MPU,
@@ -20,6 +21,8 @@ pub struct Stm32wle5xx<'a, I: InterruptService + 'a> {
 pub struct Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
     pub clocks: &'a crate::clocks::Clocks<'a, ChipSpecs>,
     pub gpio_ports: crate::gpio::GpioPorts<'a>,
+    pub usart1: crate::usart::Usart<'a>,
+    pub usart2: crate::usart::Usart<'a>,
 }
 
 impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
@@ -27,6 +30,8 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
         Self {
             clocks,
             gpio_ports: crate::gpio::GpioPorts::new(clocks),
+            usart1: crate::usart::Usart::new_usart1(clocks),
+            usart2: crate::usart::Usart::new_usart2(clocks),
         }
     }
 
@@ -41,6 +46,8 @@ impl<'a, ChipSpecs: ChipSpecsTrait> InterruptService
 {
     unsafe fn service_interrupt(&self, interrupt: u32) -> bool {
         match interrupt {
+            nvic::USART1 => self.usart1.handle_interrupt(),
+            nvic::USART2 => self.usart2.handle_interrupt(),
             _ => return false,
         }
         true

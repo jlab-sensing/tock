@@ -63,6 +63,7 @@ struct SeeedStudioLoraE5Hf {
     // gpio: &'static capsules_core::gpio::GPIO<'static, stm32f429zi::gpio::Pin<'static>>,
     scheduler: &'static RoundRobinSched<'static>,
     systick: cortexm4::systick::SysTick,
+    console: &'static capsules_core::console::Console<'static>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -72,7 +73,7 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Hf {
         F: FnOnce(Option<&dyn kernel::syscall::SyscallDriver>) -> R,
     {
         match driver_num {
-            // capsules_core::console::DRIVER_NUM => f(Some(self.console)),
+            capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             //capsules_core::led::DRIVER_NUM => f(Some(self.led)),
             // capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             // kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
@@ -307,15 +308,48 @@ pub unsafe fn main() {
     gpio_ports.get_port_from_port_id(PortId::B).enable_clock();
     gpio_ports.get_port_from_port_id(PortId::A).enable_clock();
 
+    // Setup UART
+    base_peripherals.usart1.enable_clock();
+    base_peripherals.usart2.enable_clock();
+
+    // USART1: PB6=TX , PB7=RX
+    gpio_ports.get_pin(PinId::PB06).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
+    });
+
+    gpio_ports.get_pin(PinId::PB07).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
+    });
+
+    let uart_mux = components::console::UartMuxComponent::new(&base_peripherals.usart1, 115200)
+        .finalize(components::uart_mux_component_static!());
+
+    (*addr_of_mut!(io::WRITER)).set_initialized();
+
+    // Setup the console.
+    let console = components::console::ConsoleComponent::new(
+        board_kernel,
+        capsules_core::console::DRIVER_NUM,
+        uart_mux,
+    )
+    .finalize(components::console_component_static!());
+
+    // Create the debugger object that handles calls to `debug!()`.
+    components::debug_writer::DebugWriterComponent::new(uart_mux)
+        .finalize(components::debug_writer_component_static!());
+
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
         scheduler,
         systick: cortexm4::systick::SysTick::new(),
+        console,
     };
 
-    // debug!("Initialization complete. Entering main loop");
+    debug!("Initialization complete. Entering main loop");
     // These symbols are defined in the linker script.
     extern "C" {
         /// Beginning of the ROM region containing app images.

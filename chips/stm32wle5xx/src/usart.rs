@@ -15,7 +15,6 @@ use kernel::ErrorCode;
 
 use crate::clocks::clocks::Stm32wle5xxClocks;
 use crate::clocks::phclk;
-use crate::rcc;
 
 /// Universal synchronous asynchronous receiver transmitter
 #[repr(C)]
@@ -388,7 +387,7 @@ impl<'a> Usart<'a> {
 
     pub fn new_usart2(rcc: &'a dyn Stm32wle5xxClocks) -> Self {
         Self::new(
-            USART1_BASE,
+            USART2_BASE,
             UsartClock(phclk::PeripheralClock::new(
                 phclk::PeripheralClockType::APB1(phclk::PCLK1::USART2),
                 rcc,
@@ -616,11 +615,11 @@ impl hil::uart::Configure for Usart<'_> {
         self.registers.cr1.modify(CR1::PCE::CLEAR);
 
         // Set the baud rate. By default OVER8 is 0 (oversampling by 16) and
-        // PCLK1 is at 8Mhz. The desired baud rate is 115.2KBps. So according
-        // to Table 159 of reference manual, the value for BRR is 69.444 (0x45)
+        // PCLK1 is at 4Mhz. The desired baud rate is 115.2KBps. So according
+        // to Table 159 of reference manual, the value for BRR is 138.8888 (0x8A)
         // DIV_Fraction = 0x5
         // DIV_Mantissa = 0x4
-        self.registers.brr.modify(BRR::BRR.val(0x45_u32));
+        self.registers.brr.modify(BRR::BRR.val(0x22_u32));
 
         // Enable transmit block
         self.registers.cr1.modify(CR1::TE::SET);
