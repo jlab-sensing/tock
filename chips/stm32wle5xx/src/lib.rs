@@ -15,7 +15,6 @@ pub mod chip_specific;
 pub mod nvic;
 
 // Peripherals
-pub mod dma;
 pub mod gpio;
 pub mod rcc;
 pub mod usart;

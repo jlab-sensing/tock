@@ -11,4 +11,4 @@ pub mod msi;
 pub mod phclk;
 pub mod pll;
 
-pub use crate::clocks::clocks::{Clocks, Stm32f4Clocks};
+pub use crate::clocks::clocks::{Clocks, Stm32wle5xxClocks};

@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-use crate::clocks::Stm32f4Clocks;
+use crate::clocks::Stm32wle5xxClocks;
 use crate::rcc::{APBPrescaler, Rcc, RtcClockSource};
 use kernel::platform::chip::ClockInterface;
 
 pub struct PeripheralClock<'a> {
     pub clock: PeripheralClockType,
-    clocks: &'a dyn Stm32f4Clocks,
+    clocks: &'a dyn Stm32wle5xxClocks,
 }
 
 /// Bus + Clock name for the peripherals
@@ -74,7 +74,7 @@ pub enum PCLK2 {
 }
 
 impl<'a> PeripheralClock<'a> {
-    pub const fn new(clock: PeripheralClockType, clocks: &'a dyn Stm32f4Clocks) -> Self {
+    pub const fn new(clock: PeripheralClockType, clocks: &'a dyn Stm32wle5xxClocks) -> Self {
         Self { clock, clocks }
     }
 

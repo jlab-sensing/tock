@@ -12,7 +12,7 @@ use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeabl
 use kernel::utilities::registers::{register_bitfields, ReadOnly, ReadWrite, WriteOnly};
 use kernel::utilities::StaticRef;
 
-use crate::clocks::{phclk, Stm32f4Clocks};
+use crate::clocks::{phclk, Stm32wle5xxClocks};
 // use crate::exti::{self, LineId};
 
 /// General-purpose I/Os
@@ -606,7 +606,7 @@ pub struct GpioPorts<'a> {
 }
 
 impl<'a> GpioPorts<'a> {
-    pub fn new(clocks: &'a dyn Stm32f4Clocks) -> Self {
+    pub fn new(clocks: &'a dyn Stm32wle5xxClocks) -> Self {
         Self {
             ports: [
                 Port {

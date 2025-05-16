@@ -556,7 +556,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
 ///
 /// This can be used to control clocks without the need to keep a reference of the chip specific
 /// Clocks struct, for instance by peripherals
-pub trait Stm32f4Clocks {
+pub trait Stm32wle5xxClocks {
     /// Get RCC instance
     fn get_rcc(&self) -> &Rcc;
 
@@ -566,7 +566,7 @@ pub trait Stm32f4Clocks {
     // Extend this to expose additional clock resources
 }
 
-impl<'a, ChipSpecs: ChipSpecsTrait> Stm32f4Clocks for Clocks<'a, ChipSpecs> {
+impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxClocks for Clocks<'a, ChipSpecs> {
     fn get_rcc(&self) -> &'a Rcc {
         self.rcc
     }
