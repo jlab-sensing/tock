@@ -20,6 +20,7 @@ use kernel::capabilities;
 use kernel::component::Component;
 use kernel::hil::gpio::Configure;
 use kernel::hil::led::{Led, LedHigh, LedLow};
+use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::{create_capability, debug, static_init};
@@ -245,14 +246,13 @@ unsafe fn set_pin_primary_functions(
 */
 
 /// Helper function for miscellaneous peripheral functions
-unsafe fn setup_peripherals() {
+unsafe fn setup_peripherals(tim2: &stm32wle5jc::tim2::Tim2) {
     // USART1 IRQn is 36
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::USART1).enable();
 
-    // TIM2 IRQn is 28
-    // tim2.enable_clock();
-    // tim2.start();
-    // cortexm4::nvic::Nvic::new(stm32f429zi::nvic::TIM2).enable();
+    tim2.enable_clock();
+    tim2.start();
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::TIM2).enable();
 }
 
 /// Statically initialize the core peripherals for the chip.
@@ -296,7 +296,7 @@ pub unsafe fn main() {
     );
     CHIP = Some(chip);
 
-    setup_peripherals();
+    setup_peripherals(&base_peripherals.tim2);
 
     // Create capabilities that the board needs to call certain protected kernel
     // functions.
@@ -330,6 +330,13 @@ pub unsafe fn main() {
 
     (*addr_of_mut!(io::WRITER)).set_initialized();
 
+    // ALARM
+
+    let tim2 = &base_peripherals.tim2;
+    let mux_alarm = components::alarm::AlarmMuxComponent::new(tim2).finalize(
+        components::alarm_mux_component_static!(stm32wle5jc::tim2::Tim2),
+    );
+
     // Setup the console.
     let console = components::console::ConsoleComponent::new(
         board_kernel,
@@ -345,6 +352,19 @@ pub unsafe fn main() {
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
     PROCESS_PRINTER = Some(process_printer);
+
+    // PROCESS CONSOLE
+    let process_console = components::process_console::ProcessConsoleComponent::new(
+        board_kernel,
+        uart_mux,
+        mux_alarm,
+        process_printer,
+        Some(cortexm4::support::reset),
+    )
+    .finalize(components::process_console_component_static!(
+        stm32wle5jc::tim2::Tim2
+    ));
+    let _ = process_console.start();
 
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
         .finalize(components::round_robin_component_static!(NUM_PROCS));
