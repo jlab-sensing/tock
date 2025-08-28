@@ -31,6 +31,9 @@ use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 /// Support routines for debugging I/O.
 pub mod io;
 
+#[allow(dead_code)]
+mod test;
+
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 4;
 
@@ -412,6 +415,9 @@ pub unsafe fn main() {
     /*components::test::multi_alarm_test::MultiAlarmTestComponent::new(mux_alarm)
     .finalize(components::multi_alarm_test_component_buf!(stm32f429zi::tim2::Tim2))
     .run();*/
+
+    // Uncomment to run I2C scan test
+    test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c1);
 
     board_kernel.kernel_loop(
         &seeed_studio_lora_e5_hf,
