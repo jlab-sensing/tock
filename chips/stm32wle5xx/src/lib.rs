@@ -19,6 +19,7 @@ pub mod gpio;
 pub mod rcc;
 pub mod tim2;
 pub mod usart;
+pub mod i2c;
 
 // Clocks
 pub mod clocks;
