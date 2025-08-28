@@ -242,10 +242,10 @@ register_bitfields![u32,
 
 const I2C1_BASE: StaticRef<I2CRegisters> =
     unsafe { StaticRef::new(0x4000_5400 as *const I2CRegisters) };
-const I2C2_BASE: StaticRef<I2CRegisters> =
-    unsafe { StaticRef::new(0x4000_5800 as *const I2CRegisters) };
-const I2C3_BASE: StaticRef<I2CRegisters> =
-    unsafe { StaticRef::new(0x4000_5C00 as *const I2CRegisters) };
+//const I2C2_BASE: StaticRef<I2CRegisters> =
+//    unsafe { StaticRef::new(0x4000_5800 as *const I2CRegisters) };
+//const I2C3_BASE: StaticRef<I2CRegisters> =
+//    unsafe { StaticRef::new(0x4000_5C00 as *const I2CRegisters) };
 
 struct I2CClock<'a>(phclk::PeripheralClock<'a>);
 
@@ -334,6 +334,46 @@ impl<'a> I2C<'a> {
 
     pub fn handle_event(&self) {
         // TODO implement event handler
+       
+        // handle no acknowledge
+        if self.registers.isr.is_set(ISR::NACKF) {
+            self.handle_error();
+            return;
+        }
+
+        // send next byte when TXIS is set
+        if self.registers.isr.is_set(ISR::TXIS) {
+            // check data is available
+            if self.buffer.is_some() && self.tx_position.get() < self.tx_len.get() {
+                // ready to send data
+                self.buffer.take().map(|buf| {
+                    let pos = self.tx_position.get();
+                    if pos < self.tx_len.get() {
+                        self.registers.txdr.set(u32::from(buf[pos]));
+                        self.tx_position.set(pos + 1);
+                        self.buffer.replace(buf);
+                    }
+                });
+            } else {
+                // TODO error handling?
+            }
+        }
+
+        // handle a stop condition
+        // From HAL drivers: apparently there's no need to check for TC since the STOP condition is
+        // automatically generated.
+        if self.registers.isr.is_set(ISR::STOPF) {
+            // clear stop flag
+            self.registers.icr.write(ICR::STOPCF::SET);
+            // transaction complete
+            self.status.set(I2CStatus::Idle);
+            // send message back to driver
+            self.master_client.map(|client| {
+                self.buffer
+                    .take()
+                    .map(|buf| client.command_complete(buf, Ok(())))
+            });
+        }
     }
     
     pub fn handle_error(&self) {
@@ -351,11 +391,31 @@ impl<'a> I2C<'a> {
     }
 
     fn start_write(&self) {
-        // TODO implement start write
+        // check interface is not busy? maybe just error out?
+        while self.registers.isr.read(ISR::BUSY) != 0 {}
+
+        if self.tx_len.get() <= 255 {
+            self.tx_position.set(0);
+            // set number of bytes to send
+            self.registers.cr2.modify(CR2::NBYTES.val(self.tx_len.get() as u32));
+            // automatically send STOP after NBYTES
+            self.registers.cr2.modify(CR2::AUTOEND::SET);
+            // set target address
+            self.registers.cr2.modify(CR2::SADD.val(u32::from(self.slave_address.get())));
+            // set start
+            self.registers.cr2.modify(CR2::START::SET);
+        } else {
+            // TODO handle more than 255 bytes
+            self.handle_error();
+            return;
+        }
     }
 
     fn stop(&self) {
-        // TODO implement stop
+        self.status.set(I2CStatus::Idle);
+        // clear CR2 register
+        self.registers.cr2.set(0);
+        // NOTE maybe clear interrupt flags?
     }
 
     fn start_read(&self) {
