@@ -375,6 +375,12 @@ pub unsafe fn main() {
         .finalize(components::process_printer_text_component_static!());
     PROCESS_PRINTER = Some(process_printer);
 
+    // LED
+    let led = components::led::LedsComponent::new().finalize(components::led_component_static!(
+        LedLow<'static, stm32wle5jc::gpio::Pin>,
+        LedLow::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PB05).unwrap()),
+    ));
+
     // PROCESS CONSOLE
     let process_console = components::process_console::ProcessConsoleComponent::new(
         board_kernel,
