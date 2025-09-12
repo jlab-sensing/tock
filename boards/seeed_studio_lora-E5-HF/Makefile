@@ -31,3 +31,6 @@ flash-kernel-app-blink: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFOR
 	$(OPENOCD) -f interface/jlink.cfg -c "transport select swd" -f target/stm32wlx.cfg -c \
 		"init; reset halt; program $(TOCK_ROOT_DIRECTORY)boards/seeed_studio_lora-E5-HF/blink.tbf verify 0x08020000; reset; shutdown"
 
+.PHONY: erase-all
+erase-all:
+	$(OPENOCD) -f interface/jlink.cfg -c "transport select swd" -f target/stm32wlx.cfg -c "init; reset halt; flash erase_sector 0 0 last; reset; shutdown"
