@@ -14,9 +14,24 @@ use kernel::utilities::StaticRef;
 
 use crate::clocks::{phclk, Stm32wle5xxClocks};
 
+use kernel::debug;
+
 pub enum I2CSpeed {
     Speed100k,
     Speed400k,
+}
+
+struct I2CTiming {
+    // t_HD;DAT -> Data hold time (us)
+    t_hold: f32,
+    // t_VD;DAT -> Data valid time (us)
+    t_valid: f32,
+    // t_SU;DAT -> Data setup time (us)
+    t_setup: f32,
+    // Rise time of both signals (us)
+    t_r: f32,
+    // Fall time of both signals (ns)
+    t_f: f32,
 }
 
 //// Inter-Integrated Circuit
@@ -293,7 +308,6 @@ impl<'a> I2C<'a> {
     pub fn new(clocks: &'a dyn Stm32wle5xxClocks) -> Self {
         Self {
             registers: I2C1_BASE,
-            // TODO change/fix clock source
             clock: I2CClock(phclk::PeripheralClock::new(
                 phclk::PeripheralClockType::APB1(phclk::PCLK1::I2C1),
                 clocks,
@@ -315,9 +329,41 @@ impl<'a> I2C<'a> {
     }
     
     pub fn set_speed(&self, speed: I2CSpeed, system_clock_in_mhz: usize) {
-        // TODO implement
-        // Doesn't use a clock register like the F4, looks like its done through a prescalar on the
-        // i2c clock
+        let timing = match speed {
+            I2CSpeed::Speed100k => I2CTiming {
+                t_hold: 0.,
+                t_valid: 3.45,
+                t_setup: 0.250,
+                t_r: 1.0,
+                t_f: 0.3,
+            },
+            I2CSpeed::Speed400k => I2CTiming {
+                t_hold: 0.,
+                t_valid: 0.9,
+                t_setup: 0.1,
+                t_r: 0.300,
+                t_f: 0.3,
+            }
+        };
+
+        // set the prescalar value
+        let presc: u32 = 0;
+
+        let t_i2c_clk = 1_000_000.0 / (system_clock_in_mhz as f32 * 1_000_000.0);
+
+        // calculate timing requirements
+        let scldel = (timing.t_valid - timing.t_f - (4. * t_i2c_clk)) / ((presc as f32 + 1.) * t_i2c_clk); 
+        let sdadel = (timing.t_r + timing.t_setup) / ((presc as f32 + 1.) * t_i2c_clk) - 1.;
+
+
+        debug!("I2C timing: presc {}, scldel {}, sdadel {}", presc, scldel, sdadel);
+
+        // Set register values
+        self.registers.timingr.modify(TIMINGR::PRESC.val(presc));
+        // round down
+        self.registers.timingr.modify(TIMINGR::SCLDEL.val(scldel as u32));
+        // round up 
+        self.registers.timingr.modify(TIMINGR::SDADEL.val(sdadel as u32 + 1));
     }
     
     pub fn is_enabled_clock(&self) -> bool {
@@ -463,6 +509,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         data: &'static mut [u8],
         len: usize,
     ) -> Result<(), (Error, &'static mut [u8])> {
+        debug!("I2C write to addr {:#x}, len {}", addr, len);
         if self.status.get() == I2CStatus::Idle {
             self.reset();
             self.status.set(I2CStatus::Writing);
