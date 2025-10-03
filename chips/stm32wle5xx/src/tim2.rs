@@ -13,10 +13,8 @@ use kernel::utilities::registers::{register_bitfields, ReadWrite, WriteOnly};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
 
-use crate::clocks::phclk::PCLK1;
 use crate::clocks::{phclk, Stm32wle5xxClocks};
 use crate::nvic;
-use crate::rcc;
 
 /// General purpose timers
 #[repr(C)]
@@ -346,7 +344,7 @@ impl<'a> Tim2<'a> {
         self.registers.arr.set(0xFFFF_FFFF - 1);
         // Prescale 8Mhz to 16Khz, by dividing it by 500. We need set EGR.UG
         // in order for the prescale value to become active.
-        self.registers.psc.set((499 - 1) as u32);
+        self.registers.psc.set((249 - 1) as u32);
         self.registers.egr.write(EGR::UG::SET);
         self.registers.cr1.modify(CR1::CEN::SET);
     }

@@ -14,6 +14,7 @@
 
 use core::ptr::{addr_of, addr_of_mut, write_volatile};
 
+use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use capsules_core::{gpio, led};
 use components::gpio::GpioComponent;
 use kernel::capabilities;
@@ -25,6 +26,7 @@ use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::{create_capability, debug, static_init};
 use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
+use stm32wle5jc::clocks::msi::MSI_FREQUENCY_MHZ;
 use stm32wle5jc::gpio::{PinId, PortId};
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 
@@ -68,6 +70,15 @@ struct SeeedStudioLoraE5Hf {
     scheduler: &'static RoundRobinSched<'static>,
     systick: cortexm4::systick::SysTick,
     console: &'static capsules_core::console::Console<'static>,
+    led: &'static capsules_core::led::LedDriver<
+        'static,
+        LedLow<'static, stm32wle5jc::gpio::Pin<'static>>,
+        1,
+    >,
+    alarm: &'static capsules_core::alarm::AlarmDriver<
+        'static,
+        VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+    >,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -78,8 +89,8 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Hf {
     {
         match driver_num {
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
-            //capsules_core::led::DRIVER_NUM => f(Some(self.led)),
-            // capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
+            capsules_core::led::DRIVER_NUM => f(Some(self.led)),
+            capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             // kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             // capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
             _ => f(None),
@@ -252,10 +263,12 @@ unsafe fn set_pin_primary_functions(
 unsafe fn setup_peripherals(tim2: &stm32wle5jc::tim2::Tim2) {
     // USART1 IRQn is 36
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::USART1).enable();
+    // USART1 IRQn is 36
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::USART2).enable();
 
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::TIM2).enable();
     tim2.enable_clock();
     tim2.start();
-    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::TIM2).enable();
 }
 
 /// Statically initialize the core peripherals for the chip.
@@ -265,8 +278,9 @@ unsafe fn setup_peripherals(tim2: &stm32wle5jc::tim2::Tim2) {
 /// these static_inits is wasted.
 #[inline(never)]
 unsafe fn create_peripherals() -> &'static mut Stm32wle5jcDefaultPeripherals<'static> {
-    // We use the default HSI 16Mhz clock
+    // We use the default MSI 4Mhz clock
     let rcc = static_init!(stm32wle5jc::rcc::Rcc, stm32wle5jc::rcc::Rcc::new());
+
     let clocks = static_init!(
         stm32wle5jc::clocks::Clocks<Stm32wle5jcSpecs>,
         stm32wle5jc::clocks::Clocks::new(rcc)
@@ -297,6 +311,7 @@ pub unsafe fn main() {
         stm32wle5jc::chip::Stm32wle5xx<Stm32wle5jcDefaultPeripherals>,
         stm32wle5jc::chip::Stm32wle5xx::new(peripherals)
     );
+
     CHIP = Some(chip);
 
     setup_peripherals(&base_peripherals.tim2);
@@ -315,7 +330,7 @@ pub unsafe fn main() {
 
     // Setup UART
     base_peripherals.usart1.enable_clock();
-    base_peripherals.usart2.enable_clock();
+    // base_peripherals.usart2.enable_clock();
 
     // USART1: PB6=TX , PB7=RX
     gpio_ports.get_pin(PinId::PB06).map(|pin| {
@@ -340,6 +355,13 @@ pub unsafe fn main() {
         components::alarm_mux_component_static!(stm32wle5jc::tim2::Tim2),
     );
 
+    let alarm = components::alarm::AlarmDriverComponent::new(
+        board_kernel,
+        capsules_core::alarm::DRIVER_NUM,
+        mux_alarm,
+    )
+    .finalize(components::alarm_component_static!(stm32wle5jc::tim2::Tim2));
+
     // Setup the console.
     let console = components::console::ConsoleComponent::new(
         board_kernel,
@@ -355,6 +377,12 @@ pub unsafe fn main() {
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
     PROCESS_PRINTER = Some(process_printer);
+
+    // LED
+    let led = components::led::LedsComponent::new().finalize(components::led_component_static!(
+        LedLow<'static, stm32wle5jc::gpio::Pin>,
+        LedLow::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PB05).unwrap()),
+    ));
 
     // PROCESS CONSOLE
     let process_console = components::process_console::ProcessConsoleComponent::new(
@@ -374,8 +402,12 @@ pub unsafe fn main() {
 
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
         scheduler,
-        systick: cortexm4::systick::SysTick::new(),
+        systick: cortexm4::systick::SysTick::new_with_calibration(
+            (MSI_FREQUENCY_MHZ * 1_000_000) as u32,
+        ),
         console,
+        led,
+        alarm,
     };
 
     debug!("Initialization complete. Entering main loop...");
