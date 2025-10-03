@@ -257,8 +257,8 @@ register_bitfields![u32,
 
 const I2C1_BASE: StaticRef<I2CRegisters> =
     unsafe { StaticRef::new(0x4000_5400 as *const I2CRegisters) };
-//const I2C2_BASE: StaticRef<I2CRegisters> =
-//    unsafe { StaticRef::new(0x4000_5800 as *const I2CRegisters) };
+const I2C2_BASE: StaticRef<I2CRegisters> =
+    unsafe { StaticRef::new(0x4000_5800 as *const I2CRegisters) };
 //const I2C3_BASE: StaticRef<I2CRegisters> =
 //    unsafe { StaticRef::new(0x4000_5C00 as *const I2CRegisters) };
 
@@ -328,7 +328,11 @@ impl<'a> I2C<'a> {
         }
     }
     
-    pub fn set_speed(&self, speed: I2CSpeed, system_clock_in_mhz: usize) {
+    pub fn set_speed(&self, speed: I2CSpeed) {
+        let pclk_speed = self.clock.0.get_frequency();
+
+        debug!("I2C PCLK speed: {} MHz", pclk_speed);
+
         let timing = match speed {
             I2CSpeed::Speed100k => I2CTiming {
                 t_hold: 0.,
@@ -349,21 +353,25 @@ impl<'a> I2C<'a> {
         // set the prescalar value
         let presc: u32 = 0;
 
-        let t_i2c_clk = 1_000_000.0 / (system_clock_in_mhz as f32 * 1_000_000.0);
+        let t_i2c_clk = 1. / (pclk_speed as f32);
 
         // calculate timing requirements
-        let scldel = (timing.t_valid - timing.t_f - (4. * t_i2c_clk)) / ((presc as f32 + 1.) * t_i2c_clk); 
-        let sdadel = (timing.t_r + timing.t_setup) / ((presc as f32 + 1.) * t_i2c_clk) - 1.;
+        let scldel = ((timing.t_valid - timing.t_f - (4. * t_i2c_clk)) / ((presc as f32 + 1.) * t_i2c_clk)) as u32; 
+        let sdadel = ((timing.t_r + timing.t_setup) / ((presc as f32 + 1.) * t_i2c_clk) - 1.) as u32;
 
+        debug!("I2C timing: presc {:#x}, scldel {:#x}, sdadel {:#x}", presc, scldel, sdadel);
 
-        debug!("I2C timing: presc {}, scldel {}, sdadel {}", presc, scldel, sdadel);
+        //// Set register values
+        //self.registers.timingr.modify(TIMINGR::PRESC.val(presc));
+        //// round down
+        //self.registers.timingr.modify(TIMINGR::SCLDEL.val(scldel));
+        //// round up 
+        //self.registers.timingr.modify(TIMINGR::SDADEL.val(sdadel + 1));
+        //
+        self.registers.timingr.modify(TIMINGR::PRESC.val(0x4));
+        self.registers.timingr.modify(TIMINGR::SCLL.val(0x4));
 
-        // Set register values
-        self.registers.timingr.modify(TIMINGR::PRESC.val(presc));
-        // round down
-        self.registers.timingr.modify(TIMINGR::SCLDEL.val(scldel as u32));
-        // round up 
-        self.registers.timingr.modify(TIMINGR::SDADEL.val(sdadel as u32 + 1));
+        debug!("I2C TIMINGR: {:#x}", self.registers.timingr.get());
     }
     
     pub fn is_enabled_clock(&self) -> bool {
@@ -380,6 +388,7 @@ impl<'a> I2C<'a> {
 
     pub fn handle_event(&self) {
         // TODO implement event handler
+        debug!("I2C event interrupt");
        
         // handle no acknowledge
         if self.registers.isr.is_set(ISR::NACKF) {
