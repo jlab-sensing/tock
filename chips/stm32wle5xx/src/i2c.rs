@@ -329,48 +329,24 @@ impl<'a> I2C<'a> {
     }
     
     pub fn set_speed(&self, speed: I2CSpeed) {
-        let pclk_speed = self.clock.0.get_frequency();
+        let clk_speed = self.clock.0.get_frequency();
+        
+        if clk_speed != 16_000_000 {
+            panic!("Timing calculations only valid for 16MHz PCLK1");
+        }
 
-        let timing = match speed {
-            I2CSpeed::Speed100k => I2CTiming {
-                t_hold: 0.,
-                t_valid: 3.45,
-                t_setup: 0.250,
-                t_r: 1.0,
-                t_f: 0.3,
-            },
-            I2CSpeed::Speed400k => I2CTiming {
-                t_hold: 0.,
-                t_valid: 0.9,
-                t_setup: 0.1,
-                t_r: 0.300,
-                t_f: 0.3,
+        // doesn't actually correctly calculate timings. Seems to be off by a factor of 4. Could be
+        // that the pclk freq reported by the clock module is wrong? Was generated with CubeMX
+        match speed {
+            // More like 25k
+            I2CSpeed::Speed100k => {
+                self.registers.timingr.set(0x00303D5B);
             }
-        };
-
-        // set the prescalar value
-        let presc: u32 = 0;
-
-        let t_i2c_clk = 1. / (pclk_speed as f32);
-
-        // calculate timing requirements
-        let scldel = ((timing.t_valid - timing.t_f - (4. * t_i2c_clk)) / ((presc as f32 + 1.) * t_i2c_clk)) as u32; 
-        let sdadel = ((timing.t_r + timing.t_setup) / ((presc as f32 + 1.) * t_i2c_clk) - 1.) as u32;
-
-        //debug!("I2C timing: presc {:#x}, scldel {:#x}, sdadel {:#x}", presc, scldel, sdadel);
-
-        //// Set register values
-        //self.registers.timingr.modify(TIMINGR::PRESC.val(presc));
-        //// round down
-        //self.registers.timingr.modify(TIMINGR::SCLDEL.val(scldel));
-        //// round up 
-        //self.registers.timingr.modify(TIMINGR::SDADEL.val(sdadel + 1));
-        //
-
-        // for standard mode 100kHz with 16MHz PCLK1
-        self.registers.timingr.set(0x00303D5B);
-
-        debug!("I2C TIMINGR: {:#x}", self.registers.timingr.get());
+            // More like 100k
+            I2CSpeed::Speed400k => {
+                self.registers.timingr.set(0x0010061A);
+            }
+        }
     }
     
     pub fn is_enabled_clock(&self) -> bool {
