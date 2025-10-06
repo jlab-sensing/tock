@@ -62,7 +62,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> InterruptService
             //nvic::I2C1_ER => self.i2c1.handle_error(),
 
             nvic::I2C2_EV => self.i2c2.handle_event(),
-            nvic::I2C2_ER => self.i2c2.handle_error(),
+            nvic::I2C2_ER => self.i2c2.handle_error_event(),
             
             _ => return false,
         }

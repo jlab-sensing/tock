@@ -362,12 +362,12 @@ impl<'a> I2C<'a> {
     }
 
     pub fn handle_event(&self) {
-        // TODO implement event handler
-       
         // handle no acknowledge
         if self.registers.isr.is_set(ISR::NACKF) {
             debug!("I2C NACK received");
-            self.handle_error();
+
+            self.handle_error(Error::AddressNak);
+
             return;
         }
 
@@ -379,7 +379,6 @@ impl<'a> I2C<'a> {
                 // ready to send data
                 self.buffer.take().map(|buf| {
                     let pos = self.tx_position.get();
-                    debug!("Copying byte {:#x} to register", buf[pos]);
                     if pos < self.tx_len.get() {
                         self.registers.txdr.set(u32::from(buf[pos]));
                         self.tx_position.set(pos + 1);
@@ -389,6 +388,8 @@ impl<'a> I2C<'a> {
             } else {
                 panic!("i2c attempted to send more data than available in buffer");
             }
+
+            return;
         }
 
         if self.registers.isr.is_set(ISR::RXNE) {
@@ -400,17 +401,8 @@ impl<'a> I2C<'a> {
                     self.rx_position.set(self.rx_position.get() + 1);
                 });
             }
-        }
 
-        if self.registers.isr.is_set(ISR::TC) {
-            debug!("I2C Transfer Complete");
-            match self.status.get() {
-                I2CStatus::WritingReading => {
-                    // writing is complete, now start reading
-                    self.start_read();
-                }
-                _ => panic!("Transfer complete should only be used for WriteReading"),
-            }
+            return;
         }
 
         // handle a stop condition
@@ -421,23 +413,44 @@ impl<'a> I2C<'a> {
             
             // clear stop flag
             self.registers.icr.write(ICR::STOPCF::SET);
-            // transaction complete
-            self.status.set(I2CStatus::Idle);
-            // send message back to driver
-            self.master_client.map(|client| {
-                self.buffer
-                    .take()
-                    .map(|buf| client.command_complete(buf, Ok(())))
-            });
+        
+            match self.status.get() {
+                I2CStatus::Writing | I2CStatus::Reading => {
+                    // transaction complete
+                    self.status.set(I2CStatus::Idle);
+                    // send message back to driver
+                    self.master_client.map(|client| {
+                        self.buffer
+                            .take()
+                            .map(|buf| client.command_complete(buf, Ok(())))
+                    });
+                }
+                I2CStatus::WritingReading => {
+                    // writing is complete, now start reading
+                    self.status.set(I2CStatus::Reading);
+                    self.start_read();
+                }
+                I2CStatus::Idle => {
+                    self.handle_error(Error::ArbitrationLost);
+                    panic!("i2c STOP detected while idle");
+                }
+            }
+
+            return;
         }
     }
+
+    pub fn handle_error_event(&self) {
+        panic!("Implement error handler event");
+    }
     
-    pub fn handle_error(&self) {
+    pub fn handle_error(&self, err: Error) {
         debug!("I2C handle_error called");
+
         self.master_client.map(|client| {
             self.buffer
                 .take()
-                .map(|buf| client.command_complete(buf, Err(Error::DataNak)))
+                .map(|buf| client.command_complete(buf, Err(err)))
         });
         self.stop();
     }
@@ -464,42 +477,22 @@ impl<'a> I2C<'a> {
             // set start
             self.registers.cr2.modify(CR2::START::SET);
         } else {
-            // TODO handle more than 255 bytes
-            self.handle_error();
-            return;
-        }
-    }
-
-    fn start_write_read(&self) {
-        // check interface is not busy? maybe just error out?
-        //while self.registers.isr.read(ISR::BUSY) != 0 {}
-       
-        if self.tx_len.get() <= 255 {
-            self.tx_position.set(0);
-            // set number of bytes to send
-            self.registers.cr2.modify(CR2::NBYTES.val(self.tx_len.get() as u32));
-            // do NOT send STOP after NBYTES
-            self.registers.cr2.modify(CR2::AUTOEND::CLEAR);
-            // set target address
-            self.registers.cr2.modify(CR2::SADD.val(u32::from(self.slave_address.get())));
-            // set start
-            self.registers.cr2.modify(CR2::START::SET);
-        } else {
-            // TODO handle more than 255 bytes
-            self.handle_error();
-            return;
+            panic!("i2c write length > 255 not supported");
         }
     }
 
     fn stop(&self) {
         debug!("Stop called");
-        
+      
+        // send stop
+        self.registers.cr2.modify(CR2::STOP::SET);
+
         // NOTE maybe clear interrupt flags? It appears that this clears ISR flags as well
         self.registers.cr1.modify(CR1::TXIE::CLEAR);
         self.registers.cr1.modify(CR1::RXIE::CLEAR);
         self.registers.cr1.modify(CR1::NACKIE::CLEAR);
         self.registers.cr1.modify(CR1::STOPIE::CLEAR);
-        self.registers.cr1.modify(CR1::TCIE::CLEAR);
+        //self.registers.cr1.modify(CR1::TCIE::CLEAR);
         self.registers.cr1.modify(CR1::ERRIE::CLEAR);
 
         self.status.set(I2CStatus::Idle);
@@ -522,9 +515,7 @@ impl<'a> I2C<'a> {
             // set start
             self.registers.cr2.modify(CR2::START::SET);
         } else {
-            // TODO handle more than 255 bytes
-            self.handle_error();
-            return;
+            panic!("i2c read length > 255 not supported");
         }
     }
 }
@@ -539,8 +530,8 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         self.registers.cr1.modify(CR1::TXIE::SET);
         self.registers.cr1.modify(CR1::RXIE::SET);
         self.registers.cr1.modify(CR1::NACKIE::SET);
-        self.registers.cr1.modify(CR1::STOPIE::CLEAR);
-        self.registers.cr1.modify(CR1::TCIE::SET);
+        self.registers.cr1.modify(CR1::STOPIE::SET);
+        //self.registers.cr1.modify(CR1::TCIE::SET);
         self.registers.cr1.modify(CR1::ERRIE::SET);
        
         // enable peripheiral last
@@ -564,7 +555,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
             self.buffer.replace(data);
             self.tx_len.set(write_len);
             self.rx_len.set(read_len);
-            self.start_write_read();
+            self.start_write();
             Ok(())
         } else {
             Err((Error::Busy, data))
