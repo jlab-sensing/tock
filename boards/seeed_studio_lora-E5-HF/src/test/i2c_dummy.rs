@@ -31,40 +31,15 @@ impl ScanClient {
 impl hil::i2c::I2CHwMasterClient for ScanClient {
     fn command_complete(&self, buffer: &'static mut [u8], status: Result<(), Error>) {
         debug!("I2C command complete");
-        let mut dev_id = self.dev_id.get();
 
-        if status == Ok(()) {
-            debug!("{:#x}", dev_id);
-        }
+        debug!("Status: {:?}", status);
 
-        /*
-        let dev: &dyn I2CMaster<'static> = self.i2c_master;
-        if dev_id < 0x7F {
-            dev_id += 1;
-            self.dev_id.set(dev_id);
-            //dev.write(dev_id, buffer, 2).unwrap();
-            match dev.write(dev_id, buffer, 2) {
-                Ok(()) => {
-                    debug!("I2C Device at {:#x}", dev_id);
-                }
-                Err((e, _)) => {
-                    debug!("I2C write error at {:#x}: {:?}", dev_id, e);
-                }
-            }
-        } else {
-            debug!(
-                "Done scanning for I2C devices. Buffer len: {}",
-                buffer.len()
-            );
-        }
-        */
+        debug!("Buffer: {:x?}", buffer);
     }
 }
 
 /// This test should be called with I2C2, specifically
 pub fn i2c_scan_slaves(i2c_master: &'static dyn I2CMaster<'static>) {
-    // reset command
-    static mut DATA: [u8; 1] = [0b000_0110];
 
     let dev = i2c_master;
 
@@ -73,14 +48,17 @@ pub fn i2c_scan_slaves(i2c_master: &'static dyn I2CMaster<'static>) {
 
     dev.enable();
 
-    debug!("Scanning for I2C devices...");
-    dev.write(0x40 << 1, unsafe { &mut *addr_of_mut!(DATA) }, 1).unwrap();
-    /*
-    dev.write(
-        i2c_client.dev_id.get(),
-        unsafe { &mut *addr_of_mut!(DATA) },
-        2,
-    )
-    .unwrap();
-    */
+    //debug!("Resetting ADS1219");
+    //// reset command
+    //static mut RESET: [u8; 1] = [0b000_0110];
+    //dev.write(0x40 << 1, unsafe { &mut *addr_of_mut!(RESET) }, 1).unwrap();
+
+    debug!("Reading register 0x0 from ADS1219");
+    static mut REG0: [u8; 1] = [0b0010_0000];
+    dev.write_read(
+        0x40 << 1,
+        unsafe { &mut *addr_of_mut!(REG0) },
+        1,
+        1,
+    ).unwrap();
 }
