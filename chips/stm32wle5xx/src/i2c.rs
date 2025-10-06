@@ -9,7 +9,9 @@ use kernel::hil::i2c::{self, Error, I2CHwMasterClient, I2CMaster};
 use kernel::platform::chip::ClockInterface;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
-use kernel::utilities::registers::{register_structs, register_bitfields, ReadOnly, ReadWrite, WriteOnly};
+use kernel::utilities::registers::{
+    register_bitfields, register_structs, ReadOnly, ReadWrite, WriteOnly,
+};
 use kernel::utilities::StaticRef;
 
 use crate::clocks::{phclk, Stm32wle5xxClocks};
@@ -327,10 +329,10 @@ impl<'a> I2C<'a> {
             status: Cell::new(I2CStatus::Idle),
         }
     }
-    
+
     pub fn set_speed(&self, speed: I2CSpeed) {
         let clk_speed = self.clock.0.get_frequency();
-        
+
         if clk_speed != 16_000_000 {
             panic!("Timing calculations only valid for 16MHz PCLK1");
         }
@@ -348,7 +350,7 @@ impl<'a> I2C<'a> {
             }
         }
     }
-    
+
     pub fn is_enabled_clock(&self) -> bool {
         self.clock.is_enabled()
     }
@@ -410,10 +412,10 @@ impl<'a> I2C<'a> {
         // automatically generated.
         if self.registers.isr.is_set(ISR::STOPF) {
             debug!("I2C STOP detected");
-            
+
             // clear stop flag
             self.registers.icr.write(ICR::STOPCF::SET);
-        
+
             match self.status.get() {
                 I2CStatus::Writing | I2CStatus::Reading => {
                     // transaction complete
@@ -443,7 +445,7 @@ impl<'a> I2C<'a> {
     pub fn handle_error_event(&self) {
         panic!("Implement error handler event");
     }
-    
+
     pub fn handle_error(&self, err: Error) {
         debug!("I2C handle_error called");
 
@@ -467,13 +469,17 @@ impl<'a> I2C<'a> {
         if self.tx_len.get() <= 255 {
             self.tx_position.set(0);
             // set number of bytes to send
-            self.registers.cr2.modify(CR2::NBYTES.val(self.tx_len.get() as u32));
+            self.registers
+                .cr2
+                .modify(CR2::NBYTES.val(self.tx_len.get() as u32));
             // automatically send STOP after NBYTES
             self.registers.cr2.modify(CR2::AUTOEND::SET);
             // set transaction direction to write
             self.registers.cr2.modify(CR2::RD_WRN::CLEAR);
             // set target address
-            self.registers.cr2.modify(CR2::SADD.val(u32::from(self.slave_address.get())));
+            self.registers
+                .cr2
+                .modify(CR2::SADD.val(u32::from(self.slave_address.get())));
             // set start
             self.registers.cr2.modify(CR2::START::SET);
         } else {
@@ -483,7 +489,7 @@ impl<'a> I2C<'a> {
 
     fn stop(&self) {
         debug!("Stop called");
-      
+
         // send stop
         self.registers.cr2.modify(CR2::STOP::SET);
 
@@ -505,13 +511,17 @@ impl<'a> I2C<'a> {
         if self.rx_len.get() <= 255 {
             self.rx_position.set(0);
             // set number of bytes to send
-            self.registers.cr2.modify(CR2::NBYTES.val(self.rx_len.get() as u32));
+            self.registers
+                .cr2
+                .modify(CR2::NBYTES.val(self.rx_len.get() as u32));
             // automatically send STOP after NBYTES
             self.registers.cr2.modify(CR2::AUTOEND::SET);
             // set transaction direction to read
             self.registers.cr2.modify(CR2::RD_WRN::SET);
             // set target address
-            self.registers.cr2.modify(CR2::SADD.val(u32::from(self.slave_address.get())));
+            self.registers
+                .cr2
+                .modify(CR2::SADD.val(u32::from(self.slave_address.get())));
             // set start
             self.registers.cr2.modify(CR2::START::SET);
         } else {
@@ -533,7 +543,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         self.registers.cr1.modify(CR1::STOPIE::SET);
         //self.registers.cr1.modify(CR1::TCIE::SET);
         self.registers.cr1.modify(CR1::ERRIE::SET);
-       
+
         // enable peripheiral last
         self.registers.cr1.modify(CR1::PE::SET);
     }
@@ -598,4 +608,3 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         }
     }
 }
-

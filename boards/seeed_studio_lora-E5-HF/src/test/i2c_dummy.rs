@@ -40,7 +40,6 @@ impl hil::i2c::I2CHwMasterClient for ScanClient {
 
 /// This test should be called with I2C2, specifically
 pub fn i2c_scan_slaves(i2c_master: &'static dyn I2CMaster<'static>) {
-
     let dev = i2c_master;
 
     let i2c_client = unsafe { kernel::static_init!(ScanClient, ScanClient::new(dev)) };
@@ -55,10 +54,6 @@ pub fn i2c_scan_slaves(i2c_master: &'static dyn I2CMaster<'static>) {
 
     debug!("Reading register 0x0 from ADS1219");
     static mut REG0: [u8; 1] = [0b0010_0000];
-    dev.write_read(
-        0x40 << 1,
-        unsafe { &mut *addr_of_mut!(REG0) },
-        1,
-        1,
-    ).unwrap();
+    dev.write_read(0x40 << 1, unsafe { &mut *addr_of_mut!(REG0) }, 1, 1)
+        .unwrap();
 }
