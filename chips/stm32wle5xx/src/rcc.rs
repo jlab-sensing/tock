@@ -1154,6 +1154,21 @@ impl Rcc {
         self.registers.apb1enr1.modify(APB1ENR1::I2C1EN::CLEAR)
     }
 
+    // I2C2 clock
+    pub(crate) fn is_enabled_i2c2_clock(&self) -> bool {
+        self.registers.apb1enr1.is_set(APB1ENR1::I2C2EN)
+    }
+
+    pub(crate) fn enable_i2c2_clock(&self) {
+        self.registers.apb1enr1.modify(APB1ENR1::I2C2EN::SET);
+        self.registers.apb1rstr1.modify(APB1RSTR1::I2C2RST::SET);
+        self.registers.apb1rstr1.modify(APB1RSTR1::I2C2RST::CLEAR);
+    }
+
+    pub(crate) fn disable_i2c2_clock(&self) {
+        self.registers.apb1enr1.modify(APB1ENR1::I2C2EN::CLEAR)
+    }
+
     // SPI1 clock
 
     pub(crate) fn is_enabled_spi1_clock(&self) -> bool {

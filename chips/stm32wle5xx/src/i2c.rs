@@ -255,8 +255,8 @@ register_bitfields![u32,
     ],
 ];
 
-const I2C1_BASE: StaticRef<I2CRegisters> =
-    unsafe { StaticRef::new(0x4000_5400 as *const I2CRegisters) };
+//const I2C1_BASE: StaticRef<I2CRegisters> =
+//    unsafe { StaticRef::new(0x4000_5400 as *const I2CRegisters) };
 const I2C2_BASE: StaticRef<I2CRegisters> =
     unsafe { StaticRef::new(0x4000_5800 as *const I2CRegisters) };
 //const I2C3_BASE: StaticRef<I2CRegisters> =
@@ -307,9 +307,9 @@ enum I2CStatus {
 impl<'a> I2C<'a> {
     pub fn new(clocks: &'a dyn Stm32wle5xxClocks) -> Self {
         Self {
-            registers: I2C1_BASE,
+            registers: I2C2_BASE,
             clock: I2CClock(phclk::PeripheralClock::new(
-                phclk::PeripheralClockType::APB1(phclk::PCLK1::I2C1),
+                phclk::PeripheralClockType::APB1(phclk::PCLK1::I2C2),
                 clocks,
             )),
 
@@ -329,6 +329,7 @@ impl<'a> I2C<'a> {
     }
     
     pub fn set_speed(&self, speed: I2CSpeed) {
+        debug!("I2C set speed");
         let pclk_speed = self.clock.0.get_frequency();
 
         debug!("I2C PCLK speed: {} MHz", pclk_speed);
@@ -359,7 +360,7 @@ impl<'a> I2C<'a> {
         let scldel = ((timing.t_valid - timing.t_f - (4. * t_i2c_clk)) / ((presc as f32 + 1.) * t_i2c_clk)) as u32; 
         let sdadel = ((timing.t_r + timing.t_setup) / ((presc as f32 + 1.) * t_i2c_clk) - 1.) as u32;
 
-        debug!("I2C timing: presc {:#x}, scldel {:#x}, sdadel {:#x}", presc, scldel, sdadel);
+        //debug!("I2C timing: presc {:#x}, scldel {:#x}, sdadel {:#x}", presc, scldel, sdadel);
 
         //// Set register values
         //self.registers.timingr.modify(TIMINGR::PRESC.val(presc));
@@ -368,8 +369,9 @@ impl<'a> I2C<'a> {
         //// round up 
         //self.registers.timingr.modify(TIMINGR::SDADEL.val(sdadel + 1));
         //
-        self.registers.timingr.modify(TIMINGR::PRESC.val(0x4));
-        self.registers.timingr.modify(TIMINGR::SCLL.val(0x4));
+
+        // for standard mode 100kHz with 16MHz PCLK1
+        self.registers.timingr.set(0x00303D5B);
 
         debug!("I2C TIMINGR: {:#x}", self.registers.timingr.get());
     }
@@ -453,10 +455,12 @@ impl<'a> I2C<'a> {
             self.tx_position.set(0);
             // set number of bytes to send
             self.registers.cr2.modify(CR2::NBYTES.val(self.tx_len.get() as u32));
+            debug!("Start write of {} bytes", self.registers.cr2.read(CR2::NBYTES));
             // automatically send STOP after NBYTES
             self.registers.cr2.modify(CR2::AUTOEND::SET);
             // set target address
             self.registers.cr2.modify(CR2::SADD.val(u32::from(self.slave_address.get())));
+            debug!("Slave address: {:#x}", self.registers.cr2.read(CR2::SADD));
             // set start
             self.registers.cr2.modify(CR2::START::SET);
         } else {
@@ -464,6 +468,8 @@ impl<'a> I2C<'a> {
             self.handle_error();
             return;
         }
+
+        debug!("End start_write");
     }
 
     fn stop(&self) {
@@ -484,7 +490,17 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
     }
 
     fn enable(&self) {
+        debug!("I2C Enable");
+
+        // enable all interrupts
         self.registers.cr1.modify(CR1::PE::SET);
+        self.registers.cr1.modify(CR1::TXIE::SET);
+        self.registers.cr1.modify(CR1::RXIE::SET);
+        self.registers.cr1.modify(CR1::NACKIE::SET);
+        self.registers.cr1.modify(CR1::STOPIE::SET);
+        self.registers.cr1.modify(CR1::TCIE::SET);
+        self.registers.cr1.modify(CR1::ERRIE::SET);
+
     }
 
     fn disable(&self) {
@@ -520,7 +536,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
     ) -> Result<(), (Error, &'static mut [u8])> {
         debug!("I2C write to addr {:#x}, len {}", addr, len);
         if self.status.get() == I2CStatus::Idle {
-            self.reset();
+            //self.reset();
             self.status.set(I2CStatus::Writing);
             self.slave_address.set(addr);
             self.buffer.replace(data);
