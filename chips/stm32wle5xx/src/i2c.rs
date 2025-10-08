@@ -16,24 +16,9 @@ use kernel::utilities::StaticRef;
 
 use crate::clocks::{phclk, Stm32wle5xxClocks};
 
-use kernel::debug;
-
 pub enum I2CSpeed {
     Speed100k,
     Speed400k,
-}
-
-struct I2CTiming {
-    // t_HD;DAT -> Data hold time (us)
-    t_hold: f32,
-    // t_VD;DAT -> Data valid time (us)
-    t_valid: f32,
-    // t_SU;DAT -> Data setup time (us)
-    t_setup: f32,
-    // Rise time of both signals (us)
-    t_r: f32,
-    // Fall time of both signals (ns)
-    t_f: f32,
 }
 
 //// Inter-Integrated Circuit
@@ -298,7 +283,7 @@ pub struct I2C<'a> {
     status: Cell<I2CStatus>,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq)]
 enum I2CStatus {
     Idle,
     Writing,
@@ -366,16 +351,12 @@ impl<'a> I2C<'a> {
     pub fn handle_event(&self) {
         // handle no acknowledge
         if self.registers.isr.is_set(ISR::NACKF) {
-            debug!("I2C NACK received");
-
             self.handle_error(Error::AddressNak);
-
             return;
         }
 
         // send next byte when TXIS is set
         if self.registers.isr.is_set(ISR::TXIS) {
-            debug!("I2C TXIS - ready to send next byte");
             // check data is available
             if self.buffer.is_some() && self.tx_position.get() < self.tx_len.get() {
                 // ready to send data
@@ -388,14 +369,13 @@ impl<'a> I2C<'a> {
                     }
                 });
             } else {
-                panic!("i2c attempted to send more data than available in buffer");
+                self.handle_error(Error::NotSupported);
             }
 
             return;
         }
 
         if self.registers.isr.is_set(ISR::RXNE) {
-            debug!("I2C RXIS - data received");
             let byte = self.registers.rxdr.read(RXDR::RXDATA) as u8;
             if self.buffer.is_some() && self.rx_position.get() < self.rx_len.get() {
                 self.buffer.map(|buf| {
@@ -411,8 +391,6 @@ impl<'a> I2C<'a> {
         // From HAL drivers: apparently there's no need to check for TC since the STOP condition is
         // automatically generated.
         if self.registers.isr.is_set(ISR::STOPF) {
-            debug!("I2C STOP detected");
-
             // clear stop flag
             self.registers.icr.write(ICR::STOPCF::SET);
 
@@ -434,7 +412,6 @@ impl<'a> I2C<'a> {
                 }
                 I2CStatus::Idle => {
                     self.handle_error(Error::ArbitrationLost);
-                    panic!("i2c STOP detected while idle");
                 }
             }
 
@@ -443,12 +420,10 @@ impl<'a> I2C<'a> {
     }
 
     pub fn handle_error_event(&self) {
-        panic!("Implement error handler event");
+        self.handle_error(Error::NotSupported);
     }
 
     pub fn handle_error(&self, err: Error) {
-        debug!("I2C handle_error called");
-
         self.master_client.map(|client| {
             self.buffer
                 .take()
@@ -463,9 +438,6 @@ impl<'a> I2C<'a> {
     }
 
     fn start_write(&self) {
-        // check interface is not busy? maybe just error out?
-        //while self.registers.isr.read(ISR::BUSY) != 0 {}
-
         if self.tx_len.get() <= 255 {
             self.tx_position.set(0);
             // set number of bytes to send
@@ -483,13 +455,11 @@ impl<'a> I2C<'a> {
             // set start
             self.registers.cr2.modify(CR2::START::SET);
         } else {
-            panic!("i2c write length > 255 not supported");
+            self.handle_error(Error::NotSupported);
         }
     }
 
     fn stop(&self) {
-        debug!("Stop called");
-
         // send stop
         self.registers.cr2.modify(CR2::STOP::SET);
 
@@ -525,7 +495,7 @@ impl<'a> I2C<'a> {
             // set start
             self.registers.cr2.modify(CR2::START::SET);
         } else {
-            panic!("i2c read length > 255 not supported");
+            self.handle_error(Error::NotSupported);
         }
     }
 }
