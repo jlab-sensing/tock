@@ -22,13 +22,6 @@ flash: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).bin
 	$(OPENOCD) -f interface/stlink.cfg -c "transport select hla_swd" -f target/stm32wlx.cfg \
 	-c "init; reset halt; program $< verify 0x08000000; reset; shutdown" 
 
-.PHONY: flash-kernel-app-blink
-flash-kernel-app-blink: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).bin erase-all
-	# Start OpenOCD connection
-	$(OPENOCD) -f interface/stlink.cfg -c "transport select hla_swd" -f target/stm32wlx.cfg \
-	-c "init; reset halt; program $< verify 0x08000000;" \
-	-c "program $(TOCK_ROOT_DIRECTORY)boards/seeed_studio_lora-E5-HF/blink.tbf verify 0x08020000; reset; shutdown"
-
 .PHONY: erase-all
 erase-all:
 	$(OPENOCD) -f interface/stlink.cfg -c "transport select hla_swd" -f target/stm32wlx.cfg -c "init; reset halt; flash erase_sector 0 0 last; reset; shutdown"
