@@ -18,6 +18,7 @@ pub enum PeripheralClockType {
     AHB3(HCLK3),
     APB1(PCLK1),
     APB2(PCLK2),
+    APB3(PCLK3),
     RTC,
 }
 
@@ -73,6 +74,11 @@ pub enum PCLK2 {
     TIM17,
 }
 
+/// Peripherals clocked by PCLK3
+pub enum PCLK3 {
+    SUBGHZSPI,
+}
+
 impl<'a> PeripheralClock<'a> {
     pub const fn new(clock: PeripheralClockType, clocks: &'a dyn Stm32wle5xxClocks) -> Self {
         Self { clock, clocks }
@@ -123,6 +129,12 @@ impl<'a> PeripheralClock<'a> {
             }
             //TODO: implement clock frequency retrieval for RTC and PWR peripherals
             PeripheralClockType::RTC => todo!(),
+            PeripheralClockType::APB3(ref v) => {
+                let prescaler = rcc.get_apb3_prescaler();
+                match v {
+                    PCLK3::SUBGHZSPI => (hclk_freq / usize::from(prescaler)) as u32,
+                }
+            }
         }
     }
 }
@@ -152,9 +164,13 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
             },
             PeripheralClockType::APB2(ref v) => match v {
                 PCLK2::USART1 => rcc.is_enabled_usart1_clock(),
+                PCLK2::SPI1 => rcc.is_enabled_spi1_clock(),
                 _ => unimplemented!(),
             },
             PeripheralClockType::RTC => rcc.is_enabled_rtc_clock(),
+            PeripheralClockType::APB3(ref v) => match v {
+                PCLK3::SUBGHZSPI => rcc.is_enabled_subghzspi_clock(),
+            },
         }
     }
 
@@ -201,12 +217,14 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 _ => unimplemented!(),
             },
             PeripheralClockType::APB2(ref v) => match v {
-                PCLK2::USART1 => {
-                    rcc.enable_usart1_clock();
-                }
+                PCLK2::USART1 => rcc.enable_usart1_clock(),
+                PCLK2::SPI1 => rcc.enable_spi1_clock(),
                 _ => unimplemented!(),
             },
             PeripheralClockType::RTC => rcc.enable_rtc_clock(RtcClockSource::LSI),
+            PeripheralClockType::APB3(ref v) => match v {
+                PCLK3::SUBGHZSPI => rcc.enable_subghzspi_clock(),
+            },
         }
     }
 
@@ -247,12 +265,14 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 _ => unimplemented!(),
             },
             PeripheralClockType::APB2(ref v) => match v {
-                PCLK2::USART1 => {
-                    rcc.disable_usart1_clock();
-                }
+                PCLK2::USART1 => rcc.disable_usart1_clock(),
+                PCLK2::SPI1 => rcc.disable_spi1_clock(),
                 _ => unimplemented!(),
             },
             PeripheralClockType::RTC => rcc.disable_rtc_clock(),
+            PeripheralClockType::APB3(ref v) => match v {
+                PCLK3::SUBGHZSPI => rcc.disable_subghzspi_clock(),
+            },
         }
     }
 }
