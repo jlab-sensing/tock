@@ -1093,6 +1093,13 @@ impl Rcc {
         }
     }
 
+    pub(crate) fn get_apb3_prescaler(&self) -> APBPrescaler {
+        // From RM0461 6.2.13:
+        // The SUBGHZSPI_SCK frequency is obtained by PCLK3 divided
+        // by two. The SUBGHZSPI_SCK clock maximum speed must not exceed 16 MHz.
+        APBPrescaler::DivideBy2
+    }
+
     pub(crate) fn set_mco1_clock_source(&self, source: MCOSource) {
         self.registers.cfgr.modify(CFGR::MCOSEL.val(source as u32));
     }
@@ -1343,6 +1350,20 @@ impl Rcc {
         self.registers.apb2enr.modify(APB2ENR::ADCEN::CLEAR)
     }
 
+    // SUBGHZSPI clock
+
+    pub(crate) fn is_enabled_subghzspi_clock(&self) -> bool {
+        self.registers.apb3enr.is_set(APB3ENR::SUBGHZSPIEN)
+    }
+
+    pub(crate) fn enable_subghzspi_clock(&self) {
+        self.registers.apb3enr.modify(APB3ENR::SUBGHZSPIEN::SET)
+    }
+
+    pub(crate) fn disable_subghzspi_clock(&self) {
+        self.registers.apb3enr.modify(APB3ENR::SUBGHZSPIEN::CLEAR)
+    }
+
     // DAC clock
 
     pub(crate) fn is_enabled_dac_clock(&self) -> bool {
@@ -1358,6 +1379,10 @@ impl Rcc {
     }
 
     // RNG clock
+    pub fn reset_subghzradio(&self) {
+        self.registers.csr.modify(CSR::RFRST::SET);
+        self.registers.csr.modify(CSR::RFRST::CLEAR);
+    }
 
     pub(crate) fn is_enabled_rng_clock(&self) -> bool {
         self.registers.ahb3enr.is_set(AHB3ENR::RNGEN)
@@ -1399,7 +1424,7 @@ impl Rcc {
     } */
 
     pub(crate) fn is_enabled_rtc_clock(&self) -> bool {
-        self.registers.bdcr.is_set(BDCR::RTCEN)
+        self.registers.apb3enr.is_set(APB3ENR::SUBGHZSPIEN)
     }
 
     pub(crate) fn enable_rtc_clock(&self, source: RtcClockSource) {
