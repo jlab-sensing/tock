@@ -1106,15 +1106,19 @@ impl hil::gpio::Input for Pin<'_> {
 
 // TODO
 impl<'a> hil::gpio::Interrupt<'a> for Pin<'a> {
-    fn enable_interrupts(&self, mode: hil::gpio::InterruptEdge) {}
+    fn enable_interrupts(&self, mode: hil::gpio::InterruptEdge) {
+        todo!()
+    }
 
-    fn disable_interrupts(&self) {}
+    fn disable_interrupts(&self) {
+        todo!()
+    }
 
     fn set_client(&self, client: &'a dyn hil::gpio::Client) {
         self.client.set(client);
     }
 
     fn is_pending(&self) -> bool {
-        false
+        todo!()
     }
 }
