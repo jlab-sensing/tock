@@ -26,6 +26,9 @@ pub struct Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
     pub tim2: crate::tim2::Tim2<'a>,
     //pub i2c1: crate::i2c::I2C<'a>,
     pub i2c2: crate::i2c::I2C<'a>,
+    pub subghz_spi: crate::spi::Spi<'a>,
+    pub subghz_radio_signal: crate::subghz_radio::SubGhzRadioSignals,
+    pub pwr: crate::pwr::Pwr,
 }
 
 impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
@@ -38,6 +41,9 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
             tim2: crate::tim2::Tim2::new(clocks),
             //i2c1: crate::i2c::I2C::new(clocks),
             i2c2: crate::i2c::I2C::new(clocks),
+            subghz_spi: crate::spi::Spi::new_subghzspi(clocks),
+            subghz_radio_signal: crate::subghz_radio::SubGhzRadioSignals::new(),
+            pwr: crate::pwr::Pwr::new(),
         }
     }
 
@@ -63,6 +69,15 @@ impl<'a, ChipSpecs: ChipSpecsTrait> InterruptService
             nvic::I2C2_EV => self.i2c2.handle_event(),
             nvic::I2C2_ER => self.i2c2.handle_error_event(),
 
+            nvic::RADIO_IRQ => {
+                // This interrupt must be handled from userspace
+                // so we ignore it here. This should never be called
+                // unless we make a mistake with the mask.
+                unreachable!("RADIO_IRQ should be masked out");
+            }
+            nvic::SUBGHZ_SPI => {
+                self.subghz_spi.handle_interrupt();
+            }
             _ => return false,
         }
         true
@@ -86,7 +101,9 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
     fn service_pending_interrupts(&self) {
         unsafe {
             loop {
-                if let Some(interrupt) = cortexm4f::nvic::next_pending() {
+                if let Some(interrupt) =
+                    cortexm4::nvic::next_pending_with_mask((0, 1 << (crate::nvic::RADIO_IRQ % 32)))
+                {
                     if !self.interrupt_service.service_interrupt(interrupt) {
                         panic!("unhandled interrupt {}", interrupt);
                     }
@@ -95,6 +112,16 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
                     n.clear_pending();
                     n.enable();
                 } else {
+                    if let Some(radio_interrupt) = cortexm4::nvic::next_pending_with_mask((
+                        core::u128::MAX,
+                        !(1 << (crate::nvic::RADIO_IRQ % 32)),
+                    )) {
+                        // check to confirm we masked properly
+                        assert!(radio_interrupt == crate::nvic::RADIO_IRQ);
+                        let n = cortexm4::nvic::Nvic::new(radio_interrupt);
+                        n.clear_pending();
+                        n.enable();
+                    }
                     break;
                 }
             }
@@ -102,7 +129,7 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
     }
 
     fn has_pending_interrupts(&self) -> bool {
-        unsafe { cortexm4f::nvic::has_pending() }
+        unsafe { cortexm4::nvic::has_pending_with_mask((0, 1 << (crate::nvic::RADIO_IRQ % 32))) }
     }
 
     fn mpu(&self) -> &cortexm4::mpu::MPU {
