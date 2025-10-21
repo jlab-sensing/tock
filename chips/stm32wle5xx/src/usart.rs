@@ -593,11 +593,12 @@ impl<'a> hil::uart::Transmit<'a> for Usart<'a> {
 
 impl hil::uart::Configure for Usart<'_> {
     fn configure(&self, params: hil::uart::Parameters) -> Result<(), ErrorCode> {
-        if params.baud_rate != 115200
+        if (params.baud_rate != 115200 || params.baud_rate != 1200)
             || params.stop_bits != hil::uart::StopBits::One
-            || params.parity != hil::uart::Parity::None
+            || (params.parity != hil::uart::Parity::None
+                || params.parity != hil::uart::Parity::Even)
             || params.hw_flow_control
-            || params.width != hil::uart::Width::Eight
+            || (params.width != hil::uart::Width::Eight || params.width != hil::uart::Width::Seven)
         {
             panic!(
                 "Currently we only support uart setting of 115200bps 8N1, no hardware flow control"
