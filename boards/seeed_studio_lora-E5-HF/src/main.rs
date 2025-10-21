@@ -111,7 +111,7 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Hf {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             LORA_SPI_DRIVER_NUM => f(Some(self.lora_spi_controller)),
             LORA_GPIO_DRIVER_NUM => f(Some(self.lora_gpio)),
-            capsules_extra::sdi12_ents::DRIVER_NUM => unsafe { f(Some(self.sdi12_ents)) },
+            capsules_extra::sdi12_ents::DRIVER_NUM => f(Some(self.sdi12_ents)),
             // kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             // capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
             _ => f(None),
@@ -358,7 +358,7 @@ pub unsafe fn main() {
 
     // Setup UART
     base_peripherals.usart1.enable_clock();
-    // base_peripherals.usart2.enable_clock();
+    base_peripherals.usart2.enable_clock();
 
     // USART1: PB6=TX , PB7=RX
     gpio_ports.get_pin(PinId::PB06).map(|pin| {
@@ -371,7 +371,21 @@ pub unsafe fn main() {
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
     });
 
-    let uart_mux = components::console::UartMuxComponent::new(&base_peripherals.usart1, 115200)
+    let uart_mux_1 = components::console::UartMuxComponent::new(&base_peripherals.usart1, 115200)
+        .finalize(components::uart_mux_component_static!());
+
+    // USART2: PA2=TX , PA1=RX
+    gpio_ports.get_pin(PinId::PA02).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
+    });
+
+    gpio_ports.get_pin(PinId::PA01).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
+    });
+
+    let uart_mux_2 = components::console::UartMuxComponent::new(&base_peripherals.usart2, 1200)
         .finalize(components::uart_mux_component_static!());
 
     (*addr_of_mut!(io::WRITER)).set_initialized();
@@ -394,19 +408,19 @@ pub unsafe fn main() {
     let console = components::console::ConsoleComponent::new(
         board_kernel,
         capsules_core::console::DRIVER_NUM,
-        uart_mux,
+        uart_mux_1,
     )
     .finalize(components::console_component_static!());
 
     let uart_device = static_init!(
         capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
-        capsules_core::virtualizers::virtual_uart::UartDevice::new(&uart_mux, true)
+        capsules_core::virtualizers::virtual_uart::UartDevice::new(&uart_mux_2, true)
     );
 
     // let _ = sdi12.sdi12_send_command("a!", 2);
 
     // Create the debugger object that handles calls to `debug!()`.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
+    components::debug_writer::DebugWriterComponent::new(uart_mux_1)
         .finalize(components::debug_writer_component_static!());
 
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
@@ -492,7 +506,7 @@ pub unsafe fn main() {
     // PROCESS CONSOLE
     let process_console = components::process_console::ProcessConsoleComponent::new(
         board_kernel,
-        uart_mux,
+        uart_mux_1,
         mux_alarm,
         process_printer,
         Some(cortexm4::support::reset),
@@ -521,12 +535,9 @@ pub unsafe fn main() {
         console,
         led,
         alarm,
-<<<<<<< HEAD
         lora_spi_controller,
         lora_gpio,
-=======
         sdi12_ents,
->>>>>>> e7db5390b (adding transmit branch)
     };
 
     assert!(base_peripherals.subghz_spi.is_enabled_clock());

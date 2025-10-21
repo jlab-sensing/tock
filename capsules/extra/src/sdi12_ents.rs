@@ -100,6 +100,27 @@ where
             Err(_) => Err(Sdi12Status::Sdi12Error),
         }
     }
+
+    /**
+     ******************************************************************************
+     * @brief    Acknowledge Active
+     *
+     * @return   Sdi12Status
+     ******************************************************************************
+     */
+    pub fn sdi12_ack_active(&self) -> Sdi12Status {
+        self.state.set(State::SendingCommand);
+        let buffer = "0!".as_bytes();
+        let len = buffer.len();
+        let tx_buffer = self.tx_buffer.take().unwrap();
+        tx_buffer[..len].copy_from_slice(&buffer[..len]);
+        let status_result = self.uart.transmit_buffer(&mut tx_buffer[..len], len);
+        debug!("Sending SDI12 Acknowledge Active to Address 0");
+        match status_result {
+            Ok(()) => Sdi12Status::Sdi12Ok,
+            Err(_) => Sdi12Status::Sdi12Error,
+        }
+    }
 }
 
 impl<'a, U> SyscallDriver for Sdi12Ents<'a, U>
@@ -113,14 +134,14 @@ where
         _: usize,
         processid: ProcessId,
     ) -> CommandReturn {
-        panic!("syscall has been successfully routed to sdi12_ents");
-        self.sdi12_send_command("0I!", 3);
+        debug!("Hi Tyler!");
+        self.sdi12_send_command("0!", 3);
         CommandReturn::success()
     }
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
         // Allocation is performed implicitly when the grant region is entered.
-        // self.apps.enter(processid, |_, _| {})
+        //self.apps.enter(processid, |_, _| {});
         Ok(())
     }
 }
