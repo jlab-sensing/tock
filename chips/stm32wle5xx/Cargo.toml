@@ -9,6 +9,6 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-cortexm4f = { path = "../../arch/cortex-m4f" }
+cortexm4 = { path = "../../arch/cortex-m4" }
 kernel = { path = "../../kernel" }
 enum_primitive = { path = "../../libraries/enum_primitive" }

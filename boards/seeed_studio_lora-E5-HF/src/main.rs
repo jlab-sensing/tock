@@ -12,15 +12,12 @@
 #![cfg_attr(not(doc), no_main)]
 #![deny(missing_docs)]
 
-use core::ptr::{addr_of, addr_of_mut, write_volatile};
+use core::ptr::{addr_of, addr_of_mut};
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
-use capsules_core::{gpio, led};
-use components::gpio::GpioComponent;
 use kernel::capabilities;
 use kernel::component::Component;
-use kernel::hil::gpio::Configure;
-use kernel::hil::led::{Led, LedHigh, LedLow};
+use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::round_robin::RoundRobinSched;
@@ -29,6 +26,7 @@ use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
 use stm32wle5jc::clocks::msi::MSI_FREQUENCY_MHZ;
 use stm32wle5jc::gpio::{PinId, PortId};
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
+use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
 
 /// Support routines for debugging I/O.
 pub mod io;
@@ -52,6 +50,9 @@ static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::Pr
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
+
+const LORA_SPI_DRIVER_NUM: usize = capsules_core::driver::NUM::LoRaPhySPI as usize;
+const LORA_GPIO_DRIVER_NUM: usize = capsules_core::driver::NUM::LoRaPhyGPIO as usize;
 
 /// Dummy buffer that causes the linker to reserve enough space for the stack.
 #[no_mangle]
@@ -79,6 +80,17 @@ struct SeeedStudioLoraE5Hf {
         'static,
         VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
     >,
+    lora_spi_controller: &'static capsules_core::spi_controller::Spi<
+        'static,
+        capsules_core::virtualizers::virtual_spi::VirtualSpiMasterDevice<
+            'static,
+            stm32wle5jc::spi::Spi<'static>,
+        >,
+    >,
+    lora_gpio: &'static capsules_core::gpio::GPIO<
+        'static,
+        stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio<'static>,
+    >,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -91,6 +103,8 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Hf {
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::led::DRIVER_NUM => f(Some(self.led)),
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
+            LORA_SPI_DRIVER_NUM => f(Some(self.lora_spi_controller)),
+            LORA_GPIO_DRIVER_NUM => f(Some(self.lora_gpio)),
             // kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             // capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
             _ => f(None),
@@ -260,11 +274,15 @@ unsafe fn set_pin_primary_functions(
 */
 
 /// Helper function for miscellaneous peripheral functions
-unsafe fn setup_peripherals(tim2: &stm32wle5jc::tim2::Tim2) {
+unsafe fn setup_peripherals(tim2: &stm32wle5jc::tim2::Tim2, subghz_spi: &stm32wle5jc::spi::Spi) {
     // USART1 IRQn is 36
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::USART1).enable();
     // USART1 IRQn is 36
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::USART2).enable();
+
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::RADIO_IRQ).enable();
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::SUBGHZ_SPI).enable();
+    subghz_spi.enable_clock();
 
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::TIM2).enable();
     tim2.enable_clock();
@@ -317,7 +335,7 @@ pub unsafe fn main() {
 
     CHIP = Some(chip);
 
-    setup_peripherals(&base_peripherals.tim2);
+    setup_peripherals(&base_peripherals.tim2, &base_peripherals.subghz_spi);
 
     // Create capabilities that the board needs to call certain protected kernel
     // functions.
@@ -387,6 +405,76 @@ pub unsafe fn main() {
         LedLow::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PB05).unwrap()),
     ));
 
+    //--------------------------------------------------------------------
+    // SPI
+    //--------------------------------------------------------------------
+    // ASSIGN PA04 as CS -- this is a somewhat temporary fix / for debugging (this pin can be mapped
+    // to cs, but because subghz spi is "internal" to the chip, we do not need to map any gpios.)
+    let nss = static_init!(
+        stm32wle5jc::subghz_radio::NSS,
+        stm32wle5jc::subghz_radio::NSS::new(&base_peripherals.pwr)
+    );
+
+    let chip_select =
+        kernel::hil::spi::cs::IntoChipSelect::<_, kernel::hil::spi::cs::ActiveLow>::into_cs(
+            gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PB08).unwrap(),
+        );
+
+    base_peripherals.subghz_spi.set_nss(&base_peripherals.pwr);
+
+    let lora_spi_mux = components::spi::SpiMuxComponent::new(&base_peripherals.subghz_spi)
+        .finalize(components::spi_mux_component_static!(
+            stm32wle5jc::spi::Spi<'static>
+        ));
+
+    let lora_spi_controller = components::spi::SpiSyscallComponent::new(
+        board_kernel,
+        lora_spi_mux,
+        1_000_000,
+        chip_select,
+        LORA_SPI_DRIVER_NUM,
+    )
+    .finalize(components::spi_syscall_component_static!(
+        stm32wle5jc::spi::Spi<'static>
+    ));
+
+    // reset lora module
+    base_peripherals.clocks.reset_subghzradio();
+
+    // let lora_interrupt_base = static_init!(
+    //     stm32wle5jc::subghz_radio::SubGhzRadioSignals,
+    //     stm32wle5jc::subghz_radio::SubGhzRadioSignals::new()
+    // );
+
+    let lora_interrupt_pin = static_init!(
+        stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio,
+        stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio::new(
+            &base_peripherals.subghz_radio_signal
+        )
+    );
+
+    let lora_busy_base = static_init!(
+        stm32wle5jc::subghz_radio::SubGhzRadioBusy,
+        stm32wle5jc::subghz_radio::SubGhzRadioBusy::new(&base_peripherals.pwr)
+    );
+    let lora_busy_pin = static_init!(
+        stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio,
+        stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio::new(lora_busy_base)
+    );
+
+    let lora_gpio = components::gpio::GpioComponent::new(
+        board_kernel,
+        LORA_GPIO_DRIVER_NUM,
+        components::gpio_component_helper!(
+            SubGhzRadioVirtualGpio<'static>,
+            1 => lora_busy_pin,
+            2 => lora_interrupt_pin,
+        ),
+    )
+    .finalize(components::gpio_component_static!(
+        stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio
+    ));
+
     // PROCESS CONSOLE
     let process_console = components::process_console::ProcessConsoleComponent::new(
         board_kernel,
@@ -411,8 +499,11 @@ pub unsafe fn main() {
         console,
         led,
         alarm,
+        lora_spi_controller,
+        lora_gpio,
     };
 
+    assert!(base_peripherals.subghz_spi.is_enabled_clock());
     debug!("Initialization complete. Entering main loop...");
     // These symbols are defined in the linker script.
     extern "C" {
