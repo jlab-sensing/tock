@@ -33,6 +33,9 @@ use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 /// Support routines for debugging I/O.
 pub mod io;
 
+#[allow(dead_code)]
+mod test;
+
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 4;
 
@@ -266,6 +269,9 @@ unsafe fn setup_peripherals(tim2: &stm32wle5jc::tim2::Tim2) {
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::TIM2).enable();
     tim2.enable_clock();
     tim2.start();
+
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::I2C2_EV).enable();
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::I2C2_ER).enable();
 }
 
 /// Statically initialize the core peripherals for the chip.
@@ -444,6 +450,26 @@ pub unsafe fn main() {
     /*components::test::multi_alarm_test::MultiAlarmTestComponent::new(mux_alarm)
     .finalize(components::multi_alarm_test_component_buf!(stm32f429zi::tim2::Tim2))
     .run();*/
+
+    // I2C2
+
+    gpio_ports.get_pin(PinId::PA15).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
+    });
+
+    gpio_ports.get_pin(PinId::PB15).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
+    });
+
+    base_peripherals.i2c2.enable_clock();
+    base_peripherals
+        .i2c2
+        .set_speed(stm32wle5jc::i2c::I2CSpeed::Speed400k);
+
+    // Uncomment to run I2C scan test
+    test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
 
     board_kernel.kernel_loop(
         &seeed_studio_lora_e5_hf,

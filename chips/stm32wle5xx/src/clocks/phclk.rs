@@ -146,6 +146,7 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 PCLK1::TIM2 => rcc.is_enabled_tim2_clock(),
                 PCLK1::USART2 => rcc.is_enabled_usart2_clock(),
                 PCLK1::I2C1 => rcc.is_enabled_i2c1_clock(),
+                PCLK1::I2C2 => rcc.is_enabled_i2c2_clock(),
                 PCLK1::DAC => rcc.is_enabled_dac_clock(),
                 _ => unimplemented!(),
             },
@@ -191,6 +192,9 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 PCLK1::I2C1 => {
                     rcc.enable_i2c1_clock();
                 }
+                PCLK1::I2C2 => {
+                    rcc.enable_i2c2_clock();
+                }
                 PCLK1::DAC => {
                     rcc.enable_dac_clock();
                 }
@@ -233,6 +237,12 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 }
                 PCLK1::DAC => {
                     rcc.disable_dac_clock();
+                }
+                PCLK1::I2C1 => {
+                    rcc.disable_i2c1_clock();
+                }
+                PCLK1::I2C2 => {
+                    rcc.disable_i2c2_clock();
                 }
                 _ => unimplemented!(),
             },
