@@ -15,7 +15,9 @@
 use core::ptr::{addr_of, addr_of_mut, write_volatile};
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
+use capsules_core::virtualizers::virtual_uart::UartDevice;
 use capsules_core::{gpio, led};
+use capsules_extra::sdi12_ents::Sdi12Ents;
 use components::gpio::GpioComponent;
 use kernel::capabilities;
 use kernel::component::Component;
@@ -46,6 +48,7 @@ static mut CHIP: Option<&'static stm32wle5jc::chip::Stm32wle5xx<Stm32wle5jcDefau
 static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
     None;
 
+static mut SDI12_TX_BUF: [u8; 64] = [0; 64];
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
@@ -76,6 +79,7 @@ struct SeeedStudioLoraE5Hf {
         'static,
         VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
     >,
+    sdi12_ents: &'static Sdi12Ents<'static, UartDevice<'static>>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -88,6 +92,7 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Hf {
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::led::DRIVER_NUM => f(Some(self.led)),
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
+            capsules_extra::sdi12_ents::DRIVER_NUM => unsafe { f(Some(self.sdi12_ents)) },
             // kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             // capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
             _ => f(None),
@@ -367,6 +372,13 @@ pub unsafe fn main() {
     )
     .finalize(components::console_component_static!());
 
+    let uart_device = static_init!(
+        capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
+        capsules_core::virtualizers::virtual_uart::UartDevice::new(&uart_mux, true)
+    );
+
+    // let _ = sdi12.sdi12_send_command("a!", 2);
+
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new(uart_mux)
         .finalize(components::debug_writer_component_static!());
@@ -397,6 +409,14 @@ pub unsafe fn main() {
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
+    let sdi12_ents = static_init!(
+        capsules_extra::sdi12_ents::Sdi12Ents<
+            'static,
+            capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
+        >,
+        capsules_extra::sdi12_ents::Sdi12Ents::new(uart_device, &mut SDI12_TX_BUF)
+    );
+
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
         scheduler,
         systick: cortexm4::systick::SysTick::new_with_calibration(
@@ -405,6 +425,7 @@ pub unsafe fn main() {
         console,
         led,
         alarm,
+        sdi12_ents,
     };
 
     debug!("Initialization complete. Entering main loop...");

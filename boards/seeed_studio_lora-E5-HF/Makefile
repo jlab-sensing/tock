@@ -15,22 +15,22 @@ install: flash
 
 .PHONY: flash-debug
 flash-debug: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/debug/$(PLATFORM).bin
-	$(OPENOCD) -f interface/jlink.cfg -c "transport select swd" -f target/stm32wlx.cfg -c "init; reset halt; program $< verify 0x08000000; reset; shutdown" 
+	$(OPENOCD) -f interface/stlink.cfg -c "transport select hla_swd" -f target/stm32wlx.cfg -c "init; reset halt; program $< verify 0x08000000; reset; shutdown" 
 
 .PHONY: flash
 flash: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).bin
-	$(OPENOCD) -f interface/jlink.cfg -c "transport select swd" -f target/stm32wlx.cfg \
+	$(OPENOCD) -f interface/stlink.cfg -c "transport select hla_swd" -f target/stm32wlx.cfg \
 	-c "init; reset halt; program $< verify 0x08000000; reset; shutdown" 
 
 .PHONY: flash-kernel-app-blink
 flash-kernel-app-blink: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).bin erase-all
 	# Flash the kernel.
-	$(OPENOCD) -f interface/jlink.cfg -c "transport select swd" -f target/stm32wlx.cfg \
+	$(OPENOCD) -f interface/stlink.cfg -c "transport select hla_swd" -f target/stm32wlx.cfg \
         -c "init; reset halt; program $< verify 0x08000000; reset; shutdown"
 	# Flash the blink app we temporarily are including in seeed studio board directory. 
-	$(OPENOCD) -f interface/jlink.cfg -c "transport select swd" -f target/stm32wlx.cfg -c \
+	$(OPENOCD) -f interface/stlink.cfg -c "transport select hla_swd" -f target/stm32wlx.cfg -c \
 		"init; reset halt; program $(TOCK_ROOT_DIRECTORY)boards/seeed_studio_lora-E5-HF/blink.tbf verify 0x08020000; reset; shutdown"
 
 .PHONY: erase-all
 erase-all:
-	$(OPENOCD) -f interface/jlink.cfg -c "transport select swd" -f target/stm32wlx.cfg -c "init; reset halt; flash erase_sector 0 0 last; reset; shutdown"
+	$(OPENOCD) -f interface/stlink.cfg -c "transport select hla_swd" -f target/stm32wlx.cfg -c "init; reset halt; flash erase_sector 0 0 last; reset; shutdown"
