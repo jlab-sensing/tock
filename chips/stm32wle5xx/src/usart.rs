@@ -593,42 +593,69 @@ impl<'a> hil::uart::Transmit<'a> for Usart<'a> {
 
 impl hil::uart::Configure for Usart<'_> {
     fn configure(&self, params: hil::uart::Parameters) -> Result<(), ErrorCode> {
-        if (params.baud_rate != 115200 || params.baud_rate != 1200)
-            || params.stop_bits != hil::uart::StopBits::One
-            || (params.parity != hil::uart::Parity::None
-                || params.parity != hil::uart::Parity::Even)
-            || params.hw_flow_control
-            || (params.width != hil::uart::Width::Eight || params.width != hil::uart::Width::Seven)
-        {
-            panic!(
-                "Currently we only support uart setting of 115200bps 8N1, no hardware flow control"
-            );
+        // Allowed sets
+        let ok_baud = params.baud_rate == 115200 || params.baud_rate == 1200;
+        let ok_stop = params.stop_bits == hil::uart::StopBits::One;
+        let ok_parity =
+            params.parity == hil::uart::Parity::None || params.parity == hil::uart::Parity::Even;
+        let ok_width =
+            params.width == hil::uart::Width::Eight || params.width == hil::uart::Width::Seven;
+        let ok_hw_flow = !params.hw_flow_control;
+
+        if !(ok_baud && ok_stop && ok_parity && ok_width && ok_hw_flow) {
+            panic!("Only supports for Console and SDI12");
         }
 
-        // Configure the word length - 0: 1 Start bit, 8 Data bits, n Stop bits
-        self.registers.cr1.modify(CR1::M0::CLEAR);
-        self.registers.cr1.modify(CR1::M1::CLEAR);
+        // Word length: handle 7 vs 8 later as needed
+        match params.width {
+            hil::uart::Width::Eight => {
+                self.registers.cr1.modify(CR1::M0::CLEAR);
+                self.registers.cr1.modify(CR1::M1::CLEAR);
+            }
+            hil::uart::Width::Seven => {
+                // Set M0/M1 according to reference manual for 7-bit words
+                // (adjust as required by the hardware)
+                self.registers.cr1.modify(CR1::M0::SET);
+                self.registers.cr1.modify(CR1::M1::CLEAR);
+            }
+            _ => {}
+        }
 
-        // Set the stop bit length - 00: 1 Stop bits
+        // Stop bits: already required to be One above
         self.registers.cr2.modify(CR2::STOP.val(0b00_u32));
 
-        // Set no parity
-        self.registers.cr1.modify(CR1::PCE::CLEAR);
+        // Parity
+        match params.parity {
+            hil::uart::Parity::None => {
+                self.registers.cr1.modify(CR1::PCE::CLEAR);
+            }
+            hil::uart::Parity::Even => {
+                self.registers.cr1.modify(CR1::PCE::SET);
+                self.registers.cr1.modify(CR1::PS::CLEAR); // PS = 0 => Even
+            }
+            _ => {}
+        }
 
-        // Set the baud rate. By default OVER8 is 0 (oversampling by 16) and
-        // PCLK1 is at 4Mhz. The desired baud rate is 115.2KBps. So according
-        // to Table 159 of reference manual, the value for BRR is 138.8888 (0x8A)
-        // DIV_Fraction = 0x5
-        // DIV_Mantissa = 0x4
-        self.registers.brr.modify(BRR::BRR.val(0x22_u32));
+        // Baud: choose BRR based on requested baud and clock assumptions.
+        // Example values assume PCLK1==4_000_000 and OVER8==0 (oversampling by 16).
+        match params.baud_rate {
+            115200 => {
+                // existing BRR for 115200 used previously
+                self.registers.brr.modify(BRR::BRR.val(0x22_u32));
+            }
+            1200 => {
+                // 4_000_000 / 1200 ~= 3333.333 ; choose nearest mantissa/fraction as needed
+                self.registers.brr.modify(BRR::BRR.val(3333_u32));
+            }
+            _ => {
+                // Shouldn't occur because of earlier check
+                return Err(ErrorCode::NOSUPPORT);
+            }
+        }
 
-        // Enable transmit block
+        // Enable transmit/receive and USART
         self.registers.cr1.modify(CR1::TE::SET);
-
-        // Enable receive block
         self.registers.cr1.modify(CR1::RE::SET);
-
-        // Enable USART
         self.registers.cr1.modify(CR1::UE::SET);
 
         Ok(())
