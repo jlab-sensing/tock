@@ -87,7 +87,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> InterruptService
 impl<'a, I: InterruptService + 'a> Stm32wle5xx<'a, I> {
     pub unsafe fn new(interrupt_service: &'a I) -> Self {
         Self {
-            mpu: cortexm4::mpu::MPU::new(),
+            mpu: cortexm4::mpu::new(),
             userspace_kernel_boundary: cortexm4::syscall::SysCall::new(),
             interrupt_service,
         }
@@ -97,6 +97,7 @@ impl<'a, I: InterruptService + 'a> Stm32wle5xx<'a, I> {
 impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
     type MPU = cortexm4::mpu::MPU;
     type UserspaceKernelBoundary = cortexm4::syscall::SysCall;
+    type ThreadIdProvider = cortexm4::thread_id::CortexMThreadIdProvider;
 
     fn service_pending_interrupts(&self) {
         unsafe {
@@ -140,6 +141,13 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
         &self.userspace_kernel_boundary
     }
 
+    unsafe fn with_interrupts_disabled<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        cortexm4::support::with_interrupts_disabled(f)
+    }
+
     fn sleep(&self) {
         unsafe {
             cortexm4::scb::unset_sleepdeep();
@@ -147,14 +155,7 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
         }
     }
 
-    unsafe fn atomic<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce() -> R,
-    {
-        cortexm4::support::atomic(f)
-    }
-
-    unsafe fn print_state(&self, write: &mut dyn Write) {
+    unsafe fn print_state(_this: Option<&Self>, write: &mut dyn Write) {
         CortexM4::print_cortexm_state(write);
     }
 }
