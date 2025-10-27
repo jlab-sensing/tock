@@ -5,7 +5,6 @@
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::registers::{register_bitfields, ReadWrite};
 use kernel::utilities::StaticRef;
-use CCIPR::ADCSEL::PLLP;
 
 /// Reset and clock control
 #[repr(C)]
@@ -1207,23 +1206,6 @@ impl Rcc {
 
     pub(crate) fn disable_tim2_clock(&self) {
         self.registers.apb1enr1.modify(APB1ENR1::TIM2EN::CLEAR)
-    }
-
-    // SYSCFG clock
-
-    pub(crate) fn is_enabled_syscfg_clock(&self) -> bool {
-        unimplemented!()
-        // self.registers.apb2enr.is_set(APB2ENR::SYSCFGEN)
-    }
-
-    pub(crate) fn enable_syscfg_clock(&self) {
-        unimplemented!()
-        // self.registers.apb2enr.modify(APB2ENR::SYSCFGEN::SET)
-    }
-
-    pub(crate) fn disable_syscfg_clock(&self) {
-        unimplemented!()
-        // self.registers.apb2enr.modify(APB2ENR::SYSCFGEN::CLEAR)
     }
 
     // DMA1 clock

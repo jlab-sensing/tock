@@ -170,11 +170,7 @@ use crate::rcc::PllSource;
 use crate::rcc::Rcc;
 use crate::rcc::SysClockSource;
 
-use kernel::debug;
-use kernel::utilities::cells::OptionalCell;
 use kernel::ErrorCode;
-
-use super::msi::MSI_FREQUENCY_MHZ;
 
 /// Main struct for configuring on-board clocks.
 pub struct Clocks<'a, ChipSpecs> {
@@ -374,8 +370,6 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
             return Err(ErrorCode::FAIL);
         }
 
-        let current_frequency = self.get_sys_clock_frequency_mhz();
-
         // Get the frequency of the source to be configured
         let alternate_frequency = match source {
             // The unwrap can't fail because the source clock status was checked before
@@ -405,6 +399,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
             return Err(ErrorCode::SIZE);
         }
 
+        self.rcc.set_sys_clock_source(source);
         // The documentation recommends the following sequence when changing the system clock
         // frequency:
         //
