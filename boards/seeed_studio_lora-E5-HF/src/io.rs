@@ -7,10 +7,6 @@ use core::panic::PanicInfo;
 use core::ptr::addr_of;
 use core::ptr::addr_of_mut;
 
-use capsules_core::gpio;
-use capsules_system::process_printer;
-use kernel::debug;
-use kernel::debug::panic_blink_forever;
 use kernel::debug::IoWrite;
 use kernel::hil::led;
 
@@ -24,8 +20,6 @@ use stm32wle5jc::gpio::PinId;
 use crate::CHIP;
 use crate::PROCESSES;
 use crate::PROCESS_PRINTER;
-
-use kernel::hil::gpio::Pin;
 
 /// Writer is used by kernel::debug to panic message to the serial port.
 pub struct Writer {
@@ -78,7 +72,6 @@ impl IoWrite for Writer {
 }
 
 /// Panic handler.
-#[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(info: &PanicInfo) -> ! {
     // For now we add a loop to blink the LED to an interesting way.
@@ -125,7 +118,7 @@ pub unsafe fn panic_fmt(info: &PanicInfo) -> ! {
         &mut *addr_of_mut!(WRITER),
         info,
         &cortexm4::support::nop,
-        &*addr_of!(PROCESSES),
+        PROCESSES.unwrap().as_slice(),
         &*addr_of!(CHIP),
         &*addr_of!(PROCESS_PRINTER),
     );

@@ -12,7 +12,7 @@
 #![cfg_attr(not(doc), no_main)]
 #![deny(missing_docs)]
 
-use core::ptr::{addr_of, addr_of_mut};
+use core::ptr::addr_of_mut;
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use kernel::capabilities;
@@ -20,6 +20,7 @@ use kernel::component::Component;
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
+use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::{create_capability, debug, static_init};
 use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
@@ -34,12 +35,17 @@ pub mod io;
 #[allow(dead_code)]
 mod test;
 
+///This platform's chip type:
+pub type ChipHw = stm32wle5jc::chip::Stm32wle5xx<
+    'static,
+    stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals<'static>,
+>;
+
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 4;
 
 // Actual memory for holding the active process structures.
-static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS] =
-    [None, None, None, None];
+static mut PROCESSES: Option<&'static ProcessArray<NUM_PROCS>> = None;
 
 static mut CHIP: Option<&'static stm32wle5jc::chip::Stm32wle5xx<Stm32wle5jcDefaultPeripherals>> =
     None;
@@ -286,7 +292,7 @@ unsafe fn setup_peripherals(tim2: &stm32wle5jc::tim2::Tim2, subghz_spi: &stm32wl
 
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::TIM2).enable();
     tim2.enable_clock();
-    tim2.start();
+    tim2.start().expect("Failure starting stm32wle5jc TIM2.");
 
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::I2C2_EV).enable();
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::I2C2_ER).enable();
@@ -326,7 +332,13 @@ pub unsafe fn main() {
     peripherals.init();
     let base_peripherals = &peripherals.stm32wle;
 
-    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&*addr_of!(PROCESSES)));
+    // Create an array to hold process references.
+    let processes = components::process_array::ProcessArrayComponent::new()
+        .finalize(components::process_array_component_static!(NUM_PROCS));
+    PROCESSES = Some(processes);
+
+    // Setup space to store the core kernel data structure.
+    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(processes.as_slice()));
 
     let chip = static_init!(
         stm32wle5jc::chip::Stm32wle5xx<Stm32wle5jcDefaultPeripherals>,
@@ -339,7 +351,6 @@ pub unsafe fn main() {
 
     // Create capabilities that the board needs to call certain protected kernel
     // functions.
-    let memory_allocation_capability = create_capability!(capabilities::MemoryAllocationCapability);
     let main_loop_capability = create_capability!(capabilities::MainLoopCapability);
     let process_management_capability =
         create_capability!(capabilities::ProcessManagementCapability);
@@ -392,8 +403,13 @@ pub unsafe fn main() {
     .finalize(components::console_component_static!());
 
     // Create the debugger object that handles calls to `debug!()`.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
-        .finalize(components::debug_writer_component_static!());
+    components::debug_writer::DebugWriterComponent::new::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >(
+        uart_mux,
+        create_capability!(capabilities::SetDebugWriterCapability),
+    )
+    .finalize(components::debug_writer_component_static!());
 
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
@@ -408,13 +424,6 @@ pub unsafe fn main() {
     //--------------------------------------------------------------------
     // SPI
     //--------------------------------------------------------------------
-    // ASSIGN PA04 as CS -- this is a somewhat temporary fix / for debugging (this pin can be mapped
-    // to cs, but because subghz spi is "internal" to the chip, we do not need to map any gpios.)
-    let nss = static_init!(
-        stm32wle5jc::subghz_radio::NSS,
-        stm32wle5jc::subghz_radio::NSS::new(&base_peripherals.pwr)
-    );
-
     let chip_select =
         kernel::hil::spi::cs::IntoChipSelect::<_, kernel::hil::spi::cs::ActiveLow>::into_cs(
             gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PB08).unwrap(),
@@ -488,7 +497,7 @@ pub unsafe fn main() {
     ));
     let _ = process_console.start();
 
-    let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
+    let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
@@ -528,7 +537,6 @@ pub unsafe fn main() {
             core::ptr::addr_of_mut!(_sappmem),
             core::ptr::addr_of!(_eappmem) as usize - core::ptr::addr_of!(_sappmem) as usize,
         ),
-        &mut *addr_of_mut!(PROCESSES),
         &FAULT_RESPONSE,
         &process_management_capability,
     )
