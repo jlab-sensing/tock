@@ -7,11 +7,10 @@
 //! - <https://www.st.com/en/evaluation-tools/32f412gdiscovery.html>
 
 #![no_std]
-// Disable this attribute when documenting, as a workaround for
-// https://github.com/rust-lang/rust/issues/62184.
-#![cfg_attr(not(doc), no_main)]
+#![no_main]
 #![deny(missing_docs)]
-use core::ptr::{addr_of, addr_of_mut};
+
+use core::ptr::addr_of_mut;
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use components::gpio::GpioComponent;
@@ -22,6 +21,7 @@ use kernel::hil::gpio;
 use kernel::hil::led::LedLow;
 use kernel::hil::screen::ScreenRotation;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
+use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::{create_capability, debug, static_init};
 use stm32f412g::chip_specs::Stm32f412Specs;
@@ -35,11 +35,11 @@ pub mod io;
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 4;
 
-// Actual memory for holding the active process structures.
-static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS] =
-    [None, None, None, None];
+type ChipHw = stm32f412g::chip::Stm32f4xx<'static, Stm32f412gDefaultPeripherals<'static>>;
 
-static mut CHIP: Option<&'static stm32f412g::chip::Stm32f4xx<Stm32f412gDefaultPeripherals>> = None;
+/// Static variables used by io.rs.
+static mut PROCESSES: Option<&'static ProcessArray<NUM_PROCS>> = None;
+static mut CHIP: Option<&'static ChipHw> = None;
 static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
     None;
 
@@ -47,16 +47,14 @@ static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::Pr
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
 
-/// Dummy buffer that causes the linker to reserve enough space for the stack.
-#[no_mangle]
-#[link_section = ".stack_buffer"]
-pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
+kernel::stack_size! {0x2000}
 
 type TemperatureSTMSensor = components::temperature_stm::TemperatureSTMComponentType<
     capsules_core::virtualizers::virtual_adc::AdcDevice<'static, stm32f412g::adc::Adc<'static>>,
 >;
 type TemperatureDriver = components::temperature::TemperatureComponentType<TemperatureSTMSensor>;
 type RngDriver = components::rng::RngComponentType<stm32f412g::trng::Trng<'static>>;
+type ScreenDriver = components::screen::ScreenComponentType;
 
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
@@ -76,7 +74,7 @@ struct STM32F412GDiscovery {
     gpio: &'static capsules_core::gpio::GPIO<'static, stm32f412g::gpio::Pin<'static>>,
     adc: &'static capsules_core::adc::AdcVirtualized<'static>,
     touch: &'static capsules_extra::touch::Touch<'static>,
-    screen: &'static capsules_extra::screen::Screen<'static>,
+    screen: &'static ScreenDriver,
     temperature: &'static TemperatureDriver,
     rng: &'static RngDriver,
 
@@ -99,7 +97,7 @@ impl SyscallDriverLookup for STM32F412GDiscovery {
             capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
             capsules_core::adc::DRIVER_NUM => f(Some(self.adc)),
             capsules_extra::touch::DRIVER_NUM => f(Some(self.touch)),
-            capsules_extra::screen::DRIVER_NUM => f(Some(self.screen)),
+            capsules_extra::screen::screen::DRIVER_NUM => f(Some(self.screen)),
             capsules_extra::temperature::DRIVER_NUM => f(Some(self.temperature)),
             capsules_core::rng::DRIVER_NUM => f(Some(self.rng)),
             _ => f(None),
@@ -447,7 +445,13 @@ unsafe fn start() -> (
         &base_peripherals.usart2,
     );
 
-    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&*addr_of!(PROCESSES)));
+    // Create an array to hold process references.
+    let processes = components::process_array::ProcessArrayComponent::new()
+        .finalize(components::process_array_component_static!(NUM_PROCS));
+    PROCESSES = Some(processes);
+
+    // Setup space to store the core kernel data structure.
+    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(processes.as_slice()));
 
     let chip = static_init!(
         stm32f412g::chip::Stm32f4xx<Stm32f412gDefaultPeripherals>,
@@ -478,8 +482,13 @@ unsafe fn start() -> (
     )
     .finalize(components::console_component_static!());
     // Create the debugger object that handles calls to `debug!()`.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
-        .finalize(components::debug_writer_component_static!());
+    components::debug_writer::DebugWriterComponent::new::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >(
+        uart_mux,
+        create_capability!(capabilities::SetDebugWriterCapability),
+    )
+    .finalize(components::debug_writer_component_static!());
 
     // LEDs
 
@@ -666,7 +675,7 @@ unsafe fn start() -> (
 
     let screen = components::screen::ScreenComponent::new(
         board_kernel,
-        capsules_extra::screen::DRIVER_NUM,
+        capsules_extra::screen::screen::DRIVER_NUM,
         tft,
         Some(tft),
     )
@@ -763,7 +772,7 @@ unsafe fn start() -> (
     ));
     let _ = process_console.start();
 
-    let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
+    let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
     let stm32f412g = STM32F412GDiscovery {
@@ -831,7 +840,6 @@ unsafe fn start() -> (
             core::ptr::addr_of_mut!(_sappmem),
             core::ptr::addr_of!(_eappmem) as usize - core::ptr::addr_of!(_sappmem) as usize,
         ),
-        &mut *addr_of_mut!(PROCESSES),
         &FAULT_RESPONSE,
         &process_management_capability,
     )

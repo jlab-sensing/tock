@@ -4,14 +4,21 @@
 
 //! Shared implementations for ARM Cortex-M0+ MCUs.
 
-#![crate_name = "cortexm0p"]
-#![crate_type = "rlib"]
 #![no_std]
 
 use core::fmt::Write;
 
 pub mod mpu {
+    use kernel::utilities::StaticRef;
+
     pub type MPU = cortexm::mpu::MPU<8, 256>;
+
+    const MPU_BASE_ADDRESS: StaticRef<cortexm::mpu::MpuRegisters> =
+        unsafe { StaticRef::new(0xE000ED90 as *const cortexm::mpu::MpuRegisters) };
+
+    pub unsafe fn new() -> MPU {
+        MPU::new(MPU_BASE_ADDRESS)
+    }
 }
 
 // Re-export the base generic cortex-m functions here as they are
@@ -23,56 +30,52 @@ pub use cortexm::interrupt_mask;
 pub use cortexm::nvic;
 pub use cortexm::scb;
 pub use cortexm::systick;
+pub use cortexm::thread_id;
 pub use cortexm::unhandled_interrupt;
 pub use cortexm::CortexMVariant;
 use cortexm0::CortexM0;
 
 // Mock implementation for tests on Travis-CI.
 #[cfg(not(any(doc, all(target_arch = "arm", target_os = "none"))))]
-pub unsafe extern "C" fn svc_handler_m0p() {
+pub unsafe extern "C" fn svc_handler() {
     unimplemented!()
 }
 
 #[cfg(any(doc, all(target_arch = "arm", target_os = "none")))]
-extern "C" {
-    pub fn svc_handler_m0p();
-}
+#[unsafe(naked)]
+pub unsafe extern "C" fn svc_handler() {
+    use core::arch::naked_asm;
+    naked_asm!(
+        "
+    ldr r0, 100f // EXC_RETURN_MSP
+    cmp lr, r0
+    bne 300f // to_kernel
 
-#[cfg(any(doc, all(target_arch = "arm", target_os = "none")))]
-core::arch::global_asm!(
-    "
-  .section .svc_handler_m0p, \"ax\"
-  .global svc_handler_m0p
-  .thumb_func
-svc_handler_m0p:
-  ldr r0, 100f // EXC_RETURN_MSP
-  cmp lr, r0
-  bne 300f // to_kernel
-
-  // If we get here, then this is a context switch from the kernel to the
-  // application. Set thread mode to unprivileged to run the application.
-  movs r0, #1
-  msr CONTROL, r0
-  ldr r1, 200f // EXC_RETURN_PSP
-  bx r1
+    // If we get here, then this is a context switch from the kernel to the
+    // application. Set thread mode to unprivileged to run the application.
+    movs r0, #1
+    msr CONTROL, r0
+    ldr r1, 200f // EXC_RETURN_PSP
+    bx r1
 
 300: // to_kernel
-  ldr r0, =SYSCALL_FIRED
-  movs r1, #1
-  str r1, [r0, #0]
-  // Set thread mode to privileged as we switch back to the kernel.
-  movs r0, #0
-  msr CONTROL, r0
-  ldr r1, 100f // EXC_RETURN_MSP
-  bx r1
+    ldr r0, =SYSCALL_FIRED
+    movs r1, #1
+    str r1, [r0, #0]
+    // Set thread mode to privileged as we switch back to the kernel.
+    movs r0, #0
+    msr CONTROL, r0
+    ldr r1, 100f // EXC_RETURN_MSP
+    bx r1
 
-.align 4
+    .align 4
 100: // EXC_RETURN_MSP
-  .word 0xFFFFFFF9
+    .word 0xFFFFFFF9
 200: // EXC_RETURN_PSP
-  .word 0xFFFFFFFD
-  "
-);
+    .word 0xFFFFFFFD
+        "
+    );
+}
 
 // Enum with no variants to ensure that this type is not instantiable. It is
 // only used to pass architecture-specific constants and functions via the
@@ -82,7 +85,7 @@ pub enum CortexM0P {}
 impl cortexm::CortexMVariant for CortexM0P {
     const GENERIC_ISR: unsafe extern "C" fn() = CortexM0::GENERIC_ISR;
     const SYSTICK_HANDLER: unsafe extern "C" fn() = CortexM0::SYSTICK_HANDLER;
-    const SVC_HANDLER: unsafe extern "C" fn() = svc_handler_m0p;
+    const SVC_HANDLER: unsafe extern "C" fn() = svc_handler;
     const HARD_FAULT_HANDLER: unsafe extern "C" fn() = CortexM0::HARD_FAULT_HANDLER;
 
     #[cfg(any(doc, all(target_arch = "arm", target_os = "none")))]

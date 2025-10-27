@@ -17,7 +17,7 @@ pub struct Psoc62xa<'a, I: InterruptService + 'a> {
 impl<'a, I: InterruptService> Psoc62xa<'a, I> {
     pub fn new(interrupt_service: &'a I) -> Self {
         Self {
-            mpu: unsafe { cortexm0p::mpu::MPU::new() },
+            mpu: unsafe { cortexm0p::mpu::new() },
             userspace_kernel_boundary: unsafe { cortexm0p::syscall::SysCall::new() },
             interrupt_service,
         }
@@ -27,6 +27,7 @@ impl<'a, I: InterruptService> Psoc62xa<'a, I> {
 impl<I: InterruptService> Chip for Psoc62xa<'_, I> {
     type MPU = cortexm0p::mpu::MPU;
     type UserspaceKernelBoundary = cortexm0p::syscall::SysCall;
+    type ThreadIdProvider = cortexm0p::thread_id::CortexMThreadIdProvider;
 
     fn mpu(&self) -> &Self::MPU {
         &self.mpu
@@ -38,14 +39,14 @@ impl<I: InterruptService> Chip for Psoc62xa<'_, I> {
         }
     }
 
-    unsafe fn atomic<F, R>(&self, f: F) -> R
+    unsafe fn with_interrupts_disabled<F, R>(&self, f: F) -> R
     where
         F: FnOnce() -> R,
     {
-        cortexm0p::support::atomic(f)
+        cortexm0p::support::with_interrupts_disabled(f)
     }
 
-    unsafe fn print_state(&self, writer: &mut dyn core::fmt::Write) {
+    unsafe fn print_state(_this: Option<&Self>, writer: &mut dyn core::fmt::Write) {
         CortexM0P::print_cortexm_state(writer);
     }
 
@@ -59,17 +60,13 @@ impl<I: InterruptService> Chip for Psoc62xa<'_, I> {
 
     fn service_pending_interrupts(&self) {
         unsafe {
-            loop {
-                if let Some(interrupt) = cortexm0p::nvic::next_pending() {
-                    if !self.interrupt_service.service_interrupt(interrupt) {
-                        panic!("unhandled interrupt {}", interrupt);
-                    }
-                    let n = cortexm0p::nvic::Nvic::new(interrupt);
-                    n.clear_pending();
-                    n.enable();
-                } else {
-                    break;
+            while let Some(interrupt) = cortexm0p::nvic::next_pending() {
+                if !self.interrupt_service.service_interrupt(interrupt) {
+                    panic!("unhandled interrupt {}", interrupt);
                 }
+                let n = cortexm0p::nvic::Nvic::new(interrupt);
+                n.clear_pending();
+                n.enable();
             }
             while let Some(interrupt) = cortexm0p::nvic::next_pending() {
                 let nvic = cortexm0p::nvic::Nvic::new(interrupt);

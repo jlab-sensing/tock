@@ -73,7 +73,7 @@ of installing some of these tools, but you can also install them yourself.
 
 #### Rust (nightly)
 
-We are using `nightly-2024-11-16`. We require
+We are using `nightly-2025-05-19`. We require
 installing it with [rustup](http://www.rustup.rs) so you can manage multiple
 versions of Rust and continue using stable versions for other Rust code:
 
@@ -88,7 +88,7 @@ to your `$PATH`.
 Then install the correct nightly version of Rust:
 
 ```bash
-$ rustup install nightly-2024-11-16
+$ rustup install nightly-2025-05-19
 ```
 
 ### Compiling the Kernel
@@ -187,14 +187,15 @@ with:
 ```bash
 (Ubuntu): sudo apt-get install openocd
 (MacOS): brew install open-ocd
+(Fedora): sudo dnf install openocd
 ```
 
 We require at least version `0.10.0`.
 
 #### Installing `probe-rs`
 
-[`probe-rs`](https://probe.rs/) works with various programming and debugging adapters. It can be
-installed with:
+[`probe-rs`](https://probe.rs/) works with various programming and debugging
+adapters. It can be installed with:
 
 ```bash
 (Ubuntu): curl --proto '=https' --tlsv1.2 -LsSf https://github.com/probe-rs/probe-rs/releases/latest/download/probe-rs-tools-installer.sh | sh
@@ -202,7 +203,8 @@ installed with:
 (Windows) irm https://github.com/probe-rs/probe-rs/releases/latest/download/probe-rs-tools-installer.ps1 | iex
 ```
 
-Or generally, follow the [`probe-rs` installation instructions in their own documentation](https://probe.rs/docs/getting-started/installation/).
+Or generally, follow the [`probe-rs` installation instructions in their own
+documentation](https://probe.rs/docs/getting-started/installation/).
 
 ### Loading the Kernel onto a Board
 

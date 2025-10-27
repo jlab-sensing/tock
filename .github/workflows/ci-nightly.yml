@@ -43,7 +43,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts
-          path: tools/ci-artifacts
+          path: tools/ci/ci-artifacts
 
   ci-tests:
     # Do not run job on forks
@@ -61,7 +61,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
       - name: Install dependencies for ubuntu-latest
         run: |
-          sudo apt install libudev-dev libzmq3-dev
+          sudo apt install -q libudev-dev libzmq3-dev
         if: matrix.os == 'ubuntu-latest'
       - name: Install dependencies for macos-latest
         run: |

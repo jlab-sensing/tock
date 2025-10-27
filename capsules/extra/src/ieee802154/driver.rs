@@ -538,18 +538,16 @@ impl<'a, M: device::MacDevice<'a>> DeferredCallClient for RadioDriver<'a, M> {
             .apps
             .enter(self.saved_processid.unwrap_or_panic(), |_app, upcalls| {
                 // Unwrap fail = missing processid
-                upcalls
-                    .schedule_upcall(
-                        upcall::FRAME_TRANSMITTED,
-                        (
-                            kernel::errorcode::into_statuscode(
-                                self.saved_result.unwrap_or_panic(), // Unwrap fail = missing result
-                            ),
-                            0,
-                            0,
+                let _ = upcalls.schedule_upcall(
+                    upcall::FRAME_TRANSMITTED,
+                    (
+                        kernel::errorcode::into_statuscode(
+                            self.saved_result.unwrap_or_panic(), // Unwrap fail = missing result
                         ),
-                    )
-                    .ok();
+                        0,
+                        0,
+                    ),
+                );
             });
     }
 
@@ -580,7 +578,7 @@ impl<'a, M: device::MacDevice<'a>> framer::DeviceProcedure for RadioDriver<'a, M
                     self.backup_device_procedure
                         .and_then(|procedure| procedure.lookup_addr_long(addr))
                 },
-                |res| Some(res),
+                Some,
             )
     }
 }
@@ -609,7 +607,7 @@ impl<'a, M: device::MacDevice<'a>> framer::KeyProcedure for RadioDriver<'a, M> {
                         procedure.lookup_key(SecurityLevel::EncMic32, KeyId::Index(2))
                     })
                 },
-                |res| Some(res),
+                Some,
             )
     }
 }
@@ -630,42 +628,38 @@ impl<'a, M: device::MacDevice<'a>> SyscallDriver for RadioDriver<'a, M> {
     /// - `0`: Driver existence check.
     /// - `1`: Return radio status. Ok(())/OFF = on/off.
     /// - `2`: Set short MAC address.
-    /// - `3`: Set long MAC address.
-    ///        app_cfg (in): 8 bytes: the long MAC address.
+    /// - `3`: Set long MAC address. app_cfg (in): 8 bytes: the long MAC
+    ///   address.
     /// - `4`: Set PAN ID.
     /// - `5`: Set channel.
     /// - `6`: Set transmission power.
     /// - `7`: Commit any configuration changes.
     /// - `8`: Get the short MAC address.
-    /// - `9`: Get the long MAC address.
-    ///        app_cfg (out): 8 bytes: the long MAC address.
+    /// - `9`: Get the long MAC address. app_cfg (out): 8 bytes: the long MAC
+    ///   address.
     /// - `10`: Get the PAN ID.
     /// - `11`: Get the channel.
     /// - `12`: Get the transmission power.
     /// - `13`: Get the maximum number of neighbors.
     /// - `14`: Get the current number of neighbors.
     /// - `15`: Get the short address of the neighbor at an index.
-    /// - `16`: Get the long address of the neighbor at an index.
-    ///        app_cfg (out): 8 bytes: the long MAC address.
+    /// - `16`: Get the long address of the neighbor at an index. app_cfg (out):
+    ///   8 bytes: the long MAC address.
     /// - `17`: Add a new neighbor with the given short and long address.
-    ///        app_cfg (in): 8 bytes: the long MAC address.
+    ///   app_cfg (in): 8 bytes: the long MAC address.
     /// - `18`: Remove the neighbor at an index.
     /// - `19`: Get the maximum number of keys.
     /// - `20`: Get the current number of keys.
     /// - `21`: Get the security level of the key at an index.
-    /// - `22`: Get the key id of the key at an index.
-    ///        app_cfg (out): 1 byte: the key ID mode +
-    ///                       up to 9 bytes: the key ID.
-    /// - `23`: Get the key at an index.
-    ///        app_cfg (out): 16 bytes: the key.
-    /// - `24`: Add a new key with the given description.
-    ///        app_cfg (in): 1 byte: the security level +
-    ///                      1 byte: the key ID mode +
-    ///                      9 bytes: the key ID (might not use all bytes) +
-    ///                      16 bytes: the key.
+    /// - `22`: Get the key id of the key at an index. app_cfg (out): 1 byte:
+    ///   the key ID mode + up to 9 bytes: the key ID.
+    /// - `23`: Get the key at an index. app_cfg (out): 16 bytes: the key.
+    /// - `24`: Add a new key with the given description. app_cfg (in): 1 byte:
+    ///   the security level + 1 byte: the key ID mode + 9 bytes: the key ID
+    ///   (might not use all bytes) + 16 bytes: the key.
     /// - `25`: Remove the key at an index.
     /// - `26`: Transmit a frame (parse required). Take the provided payload and
-    ///        parameters to encrypt, form headers, and transmit the frame.
+    ///   parameters to encrypt, form headers, and transmit the frame.
     /// - `28`: Set long address.
     /// - `29`: Get the long MAC address.
     /// - `30`: Turn the radio on.
@@ -796,9 +790,10 @@ impl<'a, M: device::MacDevice<'a>> SyscallDriver for RadioDriver<'a, M> {
                                 if cfg.len() != 8 {
                                     return CommandReturn::failure(ErrorCode::SIZE);
                                 }
-                                let mut new_neighbor: DeviceDescriptor =
-                                    DeviceDescriptor::default();
-                                new_neighbor.short_addr = arg1 as u16;
+                                let mut new_neighbor = DeviceDescriptor {
+                                    short_addr: arg1 as u16,
+                                    ..Default::default()
+                                };
                                 cfg.copy_to_slice(&mut new_neighbor.long_addr);
                                 self.add_neighbor(new_neighbor)
                                     .map_or(CommandReturn::failure(ErrorCode::INVAL), |index| {
@@ -983,16 +978,14 @@ impl<'a, M: device::MacDevice<'a>> device::TxClient for RadioDriver<'a, M> {
         self.kernel_tx.replace(spi_buf);
         self.current_app.take().map(|processid| {
             let _ = self.apps.enter(processid, |_app, upcalls| {
-                upcalls
-                    .schedule_upcall(
-                        upcall::FRAME_TRANSMITTED,
-                        (
-                            kernel::errorcode::into_statuscode(result),
-                            acked as usize,
-                            0,
-                        ),
-                    )
-                    .ok();
+                let _ = upcalls.schedule_upcall(
+                    upcall::FRAME_TRANSMITTED,
+                    (
+                        kernel::errorcode::into_statuscode(result),
+                        acked as usize,
+                        0,
+                    ),
+                );
             });
         });
         self.do_next_tx_async();
@@ -1088,9 +1081,7 @@ impl<'a, M: device::MacDevice<'a>> device::RxClient for RadioDriver<'a, M> {
                 .unwrap_or(false);
             if read_present {
                 // Place lqi as argument to be included in upcall.
-                kernel_data
-                    .schedule_upcall(upcall::FRAME_RECEIVED, (lqi as usize, 0, 0))
-                    .ok();
+                let _ = kernel_data.schedule_upcall(upcall::FRAME_RECEIVED, (lqi as usize, 0, 0));
             }
         });
     }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-//! ARM System Control Block
+//! Cortex-M System Control Block (SCB)
 //!
 //! <http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.dui0553a/CIHFDJCA.html>
 
@@ -339,4 +339,37 @@ pub unsafe fn disable_fpca() {
     let _ = SCB.cpacr.read(CoprocessorAccessControl::CP10);
 
     unimplemented!()
+}
+
+/// Disable the MemFault exception.
+///
+/// # Notes
+///
+/// This escalates the exception to a HardFault instead of triggering a
+/// MemFault exception, so it does not _disable_ MemFault completely.
+pub unsafe fn disable_memfault() {
+    SCB.shcsr
+        .modify(SystemHandlerControlAndState::MEMFAULTENA::CLEAR);
+}
+
+/// Disable the UsageFault exception.
+///
+/// # Notes
+///
+/// This escalates the exception to a HardFault instead of triggering a
+/// UsageFault exception, so it does not _disable_ UsageFault completely.
+pub unsafe fn disable_usagefault() {
+    SCB.shcsr
+        .modify(SystemHandlerControlAndState::USGFAULTENA::CLEAR);
+}
+
+/// Disable the BusFault exception.
+///
+/// # Notes
+///
+/// This escalates the exception to a HardFault instead of triggering a
+/// BusFault exception, so it does not _disable_ BusFault completely.
+pub unsafe fn disable_busfault() {
+    SCB.shcsr
+        .modify(SystemHandlerControlAndState::BUSFAULTENA::CLEAR);
 }

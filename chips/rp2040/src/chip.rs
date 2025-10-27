@@ -44,7 +44,7 @@ pub struct Rp2040<'a, I: InterruptService + 'a> {
 impl<'a, I: InterruptService> Rp2040<'a, I> {
     pub unsafe fn new(interrupt_service: &'a I, sio: &'a SIO) -> Self {
         Self {
-            mpu: cortexm0p::mpu::MPU::new(),
+            mpu: cortexm0p::mpu::new(),
             userspace_kernel_boundary: cortexm0p::syscall::SysCall::new(),
             interrupt_service,
             sio,
@@ -57,6 +57,7 @@ impl<'a, I: InterruptService> Rp2040<'a, I> {
 impl<I: InterruptService> Chip for Rp2040<'_, I> {
     type MPU = cortexm0p::mpu::MPU;
     type UserspaceKernelBoundary = cortexm0p::syscall::SysCall;
+    type ThreadIdProvider = cortexm0p::thread_id::CortexMThreadIdProvider;
 
     fn service_pending_interrupts(&self) {
         unsafe {
@@ -64,20 +65,16 @@ impl<I: InterruptService> Chip for Rp2040<'_, I> {
                 Processor::Processor0 => self.processor0_interrupt_mask,
                 Processor::Processor1 => self.processor1_interrupt_mask,
             };
-            loop {
-                if let Some(interrupt) = cortexm0p::nvic::next_pending_with_mask(mask) {
-                    // ignore SIO_IRQ_PROC1 as it is intended for processor 1
-                    // not able to unset its pending status
-                    // probably only processor 1 can unset the pending by reading the fifo
-                    if !self.interrupt_service.service_interrupt(interrupt) {
-                        panic!("unhandled interrupt {}", interrupt);
-                    }
-                    let n = cortexm0p::nvic::Nvic::new(interrupt);
-                    n.clear_pending();
-                    n.enable();
-                } else {
-                    break;
+            while let Some(interrupt) = cortexm0p::nvic::next_pending_with_mask(mask) {
+                // ignore SIO_IRQ_PROC1 as it is intended for processor 1
+                // not able to unset its pending status
+                // probably only processor 1 can unset the pending by reading the fifo
+                if !self.interrupt_service.service_interrupt(interrupt) {
+                    panic!("unhandled interrupt {}", interrupt);
                 }
+                let n = cortexm0p::nvic::Nvic::new(interrupt);
+                n.clear_pending();
+                n.enable();
             }
         }
     }
@@ -107,14 +104,14 @@ impl<I: InterruptService> Chip for Rp2040<'_, I> {
         }
     }
 
-    unsafe fn atomic<F, R>(&self, f: F) -> R
+    unsafe fn with_interrupts_disabled<F, R>(&self, f: F) -> R
     where
         F: FnOnce() -> R,
     {
-        cortexm0p::support::atomic(f)
+        cortexm0p::support::with_interrupts_disabled(f)
     }
 
-    unsafe fn print_state(&self, writer: &mut dyn Write) {
+    unsafe fn print_state(_this: Option<&Self>, writer: &mut dyn Write) {
         CortexM0P::print_cortexm_state(writer);
     }
 }

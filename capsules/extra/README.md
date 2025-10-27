@@ -71,10 +71,10 @@ These drivers provide support for various ICs.
 - **[ST77xx](src/st77xx.rs)**: ST77xx IPS screen.
 
 
-Wireless
+Wireless and Networking
 --------
 
-Support for wireless radios.
+Support for wireless radios, network stacks and related infrastructure.
 
 - **[nRF51822 Serialization](src/nrf51822_serialization.rs)**: Kernel support
   for using the nRF51 serialization library.
@@ -83,7 +83,9 @@ Support for wireless radios.
   advertisements.
 - **[LoRa Phy]**: Support for exposing Semtech devices to userspace
   See the lora_things_plus board for an example
-
+- **[Ethernet Tap Driver](src/ethernet_tap.rs)**: Forwarding raw IEEE
+  802.3 Ethernet frames from / to userspace. Useful for running
+  network stacks in userspace.
 
 Libraries
 ---------
@@ -119,6 +121,8 @@ These provide common and better abstractions for userspace.
 - **[Ambient Light](src/ambient_light.rs)**: Query light sensors.
 - **[App Flash](src/app_flash_driver.rs)**: Allow applications to write their
   own flash.
+- **[App Loader](src/app_loader.rs)**: Allow applications to request to 
+  install and load new applications.
 - **[Buzzer](src/buzzer_driver.rs)**: Simple buzzer.
 - **[Servo](src/servo.rs)**: Servo motor.
 - **[Date-Time](src/date_time.rs)**: Real time clock date/time support.
@@ -133,8 +137,8 @@ These provide common and better abstractions for userspace.
 - **[PWM](src/pwm.rs)**: Pulse-width modulation support.
 - **[Rainfall](src/rainfall.rs)**: Query rainfall sensors.
 - **[Read Only State](src/read_only_state.rs)**: Read-only state sharing.
-- **[Screen](src/screen.rs)**: Displays and screens.
-- **[Screen Shared](src/screen_shared.rs)**: App-specific screen windows.
+- **[Screen](src/screen/screen.rs)**: Displays and screens.
+- **[Screen Shared](src/screen/screen_shared.rs)**: App-specific screen windows.
 - **[SHA](src/sha.rs)**: SHA hashes.
 - **[Sound Pressure](src/sound_pressure.rs)**: Query sound pressure levels.
 - **[Temperature](src/temperature.rs)**: Query temperature sensors.
@@ -155,6 +159,8 @@ simultaneously) support for generic sensor interfaces.
   gyroscope).
 - **[Nonvolatile Storage](src/nonvolatile_storage_driver.rs)**: Persistent
   storage for userspace.
+- **[Isolated Nonvolatile Storage](src/isolated_nonvolatile_storage_driver.rs)**:
+  Per-app isolated persistent storage for userspace.
 
 
 Utility Capsules
@@ -163,6 +169,8 @@ Utility Capsules
 Other capsules that implement reusable logic.
 
 - **[Bus Adapters](src/bus.rs)**: Generic abstraction for SPI/I2C/8080.
+- **[Button Keyboard](src/button_keyboard.rs)**: Convert keyboard key presses
+    into button presses.
 - **[Buzzer PWM](src/buzzer_pwm.rs)**: Buzzer with a PWM pin.
 - **[SG90 PWM](src/sg90.rs)**: SG90 servomotor.
 - **[HMAC-SHA256](src/hmac_sha256.rs)**: HMAC using SHA-256.
@@ -171,11 +179,20 @@ Other capsules that implement reusable logic.
 - **[Log Storage](src/log.rs)**: Log storage abstraction on flash devices.
 - **[Nonvolatile to Pages](src/nonvolatile_to_pages.rs)**: Map arbitrary reads
   and writes to flash pages.
+- **[Screen Adapters](src/screen/screen_adapters.rs)**: Adapters to convert
+  pixel formats for implementations of the `Screen` HIL, such as
+  `ScreenARGB8888ToMono8BitPage`.
+- **[Screen On Led](src/screen/screen_on_led.rs)**: Draw fake LEDs on the screen.
 - **[SHA256](src/sha256.rs)**: SHA256 software hash.
+- **[SignatureVerifyInMemoryKeys](src/signature_verify_in_memory_keys.rs)**:
+  Signature verification with multiple in-memory keys.
 - **[SipHash](src/sip_hash.rs)**: SipHash software hash.
 - **[TicKV](src/tickv.rs)**: Key-value storage.
 - **[TicKV KV Store](src/tickv_kv_store.rs)**: Provide `hil::kv::KV` with TickV.
-- **[Virtual KV](src/virtual_kv.rs)**: Virtualize access to KV with permissions.
+- **[Virtual KV](src/virtualizers/virtual_kv.rs)**: Virtualize access to KV with
+  permissions.
+- **[Virtual Screen Split](src/virtualizers/screen/virtual_screen_split.rs)**:
+  Virtualize access to the screen by splitting into sections.
 
 
 Debugging Capsules
@@ -189,3 +206,5 @@ various elements of Tock.
 - **[Debug Process Restart](src/debug_process_restart.rs)**: Force all processes
   to enter a fault state when a button is pressed.
 - **[Panic Button](src/panic_button.rs)**: Use a button to force a `panic!()`.
+- **[Process Info](src/process_info_driver.rs)**: Inspect and control processes.
+

@@ -7,12 +7,10 @@
 //! It is based on nRF52840 SoC.
 
 #![no_std]
-// Disable this attribute when documenting, as a workaround for
-// https://github.com/rust-lang/rust/issues/62184.
-#![cfg_attr(not(doc), no_main)]
+#![no_main]
 #![deny(missing_docs)]
 
-use core::ptr::{addr_of, addr_of_mut};
+use core::ptr::addr_of;
 
 use kernel::capabilities;
 use kernel::component::Component;
@@ -20,6 +18,7 @@ use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
 use kernel::hil::usb::Client;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
+use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
 #[allow(unused_imports)]
 use kernel::{create_capability, debug, debug_gpio, debug_verbose, static_init};
@@ -71,11 +70,11 @@ const FAULT_RESPONSE: capsules_system::process_policies::StopWithDebugFaultPolic
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 8;
 
-// State for loading and holding applications.
-static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS] =
-    [None; NUM_PROCS];
+type ChipHw = nrf52840::chip::NRF52<'static, Nrf52840DefaultPeripherals<'static>>;
 
-static mut CHIP: Option<&'static nrf52840::chip::NRF52<Nrf52840DefaultPeripherals>> = None;
+/// Static variables used by io.rs.
+static mut PROCESSES: Option<&'static ProcessArray<NUM_PROCS>> = None;
+static mut CHIP: Option<&'static ChipHw> = None;
 static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
     None;
 static mut CDC_REF_FOR_PANIC: Option<
@@ -87,10 +86,7 @@ static mut CDC_REF_FOR_PANIC: Option<
 > = None;
 static mut NRF52_POWER: Option<&'static nrf52840::power::Power> = None;
 
-/// Dummy buffer that causes the linker to reserve enough space for the stack.
-#[no_mangle]
-#[link_section = ".stack_buffer"]
-pub static mut STACK_MEMORY: [u8; 0x1000] = [0; 0x1000];
+kernel::stack_size! {0x1000}
 
 // Function for the CDC/USB stack to use to enter the bootloader.
 fn baud_rate_reset_bootloader_enter() {
@@ -175,7 +171,7 @@ impl SyscallDriverLookup for Platform {
             capsules_core::button::DRIVER_NUM => f(Some(self.button)),
             capsules_core::adc::DRIVER_NUM => f(Some(self.adc)),
             capsules_core::rng::DRIVER_NUM => f(Some(self.rng)),
-            capsules_extra::screen::DRIVER_NUM => f(Some(self.screen)),
+            capsules_extra::screen::screen::DRIVER_NUM => f(Some(self.screen)),
             capsules_extra::ble_advertising_driver::DRIVER_NUM => f(Some(self.ble_radio)),
             capsules_extra::ieee802154::DRIVER_NUM => f(Some(self.ieee802154_radio)),
             capsules_extra::net::udp::DRIVER_NUM => f(Some(self.udp_driver)),
@@ -249,7 +245,13 @@ pub unsafe fn start() -> (
     // bootloader.
     NRF52_POWER = Some(&base_peripherals.pwr_clk);
 
-    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&*addr_of!(PROCESSES)));
+    // Create an array to hold process references.
+    let processes = components::process_array::ProcessArrayComponent::new()
+        .finalize(components::process_array_component_static!(NUM_PROCS));
+    PROCESSES = Some(processes);
+
+    // Setup space to store the core kernel data structure.
+    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(processes.as_slice()));
 
     // Do nRF configuration and setup. This is shared code with other nRF-based
     // platforms.
@@ -410,8 +412,13 @@ pub unsafe fn start() -> (
     )
     .finalize(components::console_component_static!());
     // Create the debugger object that handles calls to `debug!()`.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
-        .finalize(components::debug_writer_component_static!());
+    components::debug_writer::DebugWriterComponent::new::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >(
+        uart_mux,
+        create_capability!(capabilities::SetDebugWriterCapability),
+    )
+    .finalize(components::debug_writer_component_static!());
 
     //--------------------------------------------------------------------------
     // RANDOM NUMBERS
@@ -507,30 +514,30 @@ pub unsafe fn start() -> (
     // Create a Driver for userspace access to the screen.
     // let screen = components::screen::ScreenComponent::new(
     //     board_kernel,
-    //     capsules_extra::screen::DRIVER_NUM,
+    //     capsules_extra::screen::screen::DRIVER_NUM,
     //     ssd1306,
     //     Some(ssd1306),
     // )
     // .finalize(components::screen_component_static!(1032));
 
     let apps_regions = static_init!(
-        [capsules_extra::screen_shared::AppScreenRegion; 3],
+        [capsules_extra::screen::screen_shared::AppScreenRegion; 3],
         [
-            capsules_extra::screen_shared::AppScreenRegion::new(
+            capsules_extra::screen::screen_shared::AppScreenRegion::new(
                 kernel::process::ShortId::Fixed(core::num::NonZeroU32::new(crc("circle")).unwrap()),
                 0,     // x
                 0,     // y
                 8 * 8, // width
                 8 * 8  // height
             ),
-            capsules_extra::screen_shared::AppScreenRegion::new(
+            capsules_extra::screen::screen_shared::AppScreenRegion::new(
                 kernel::process::ShortId::Fixed(core::num::NonZeroU32::new(crc("count")).unwrap()),
                 8 * 8, // x
                 0,     // y
                 8 * 8, // width
                 4 * 8  // height
             ),
-            capsules_extra::screen_shared::AppScreenRegion::new(
+            capsules_extra::screen::screen_shared::AppScreenRegion::new(
                 kernel::process::ShortId::Fixed(
                     core::num::NonZeroU32::new(crc("tock-scroll")).unwrap()
                 ),
@@ -544,7 +551,7 @@ pub unsafe fn start() -> (
 
     let screen = components::screen::ScreenSharedComponent::new(
         board_kernel,
-        capsules_extra::screen::DRIVER_NUM,
+        capsules_extra::screen::screen::DRIVER_NUM,
         ssd1306,
         apps_regions,
     )
@@ -668,15 +675,37 @@ pub unsafe fn start() -> (
     // PROCESS LOADING
     //--------------------------------------------------------------------------
 
+    // These symbols are defined in the standard Tock linker script.
+    extern "C" {
+        /// Beginning of the ROM region containing app images.
+        static _sapps: u8;
+        /// End of the ROM region containing app images.
+        static _eapps: u8;
+        /// Beginning of the RAM region for app memory.
+        static mut _sappmem: u8;
+        /// End of the RAM region for app memory.
+        static _eappmem: u8;
+    }
+
+    let app_flash = core::slice::from_raw_parts(
+        core::ptr::addr_of!(_sapps),
+        core::ptr::addr_of!(_eapps) as usize - core::ptr::addr_of!(_sapps) as usize,
+    );
+    let app_memory = core::slice::from_raw_parts_mut(
+        core::ptr::addr_of_mut!(_sappmem),
+        core::ptr::addr_of!(_eappmem) as usize - core::ptr::addr_of!(_sappmem) as usize,
+    );
+
     // Create and start the asynchronous process loader.
     let _loader = components::loader::sequential::ProcessLoaderSequentialComponent::new(
         checker,
-        &mut *addr_of_mut!(PROCESSES),
         board_kernel,
         chip,
         &FAULT_RESPONSE,
         assigner,
         storage_permissions_policy,
+        app_flash,
+        app_memory,
     )
     .finalize(components::process_loader_sequential_component_static!(
         nrf52840::chip::NRF52<Nrf52840DefaultPeripherals>,
@@ -692,7 +721,7 @@ pub unsafe fn start() -> (
     // approach than this.
     nrf52_components::NrfClockComponent::new(&base_peripherals.clock).finalize(());
 
-    let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
+    let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
     let platform = Platform {

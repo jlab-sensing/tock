@@ -100,7 +100,7 @@ impl<'a, I: InterruptService + 'a> Esp32C3<'a, I> {
             if !self.pic_interrupt_service.service_interrupt(interrupt) {
                 panic!("Unhandled interrupt {}", interrupt);
             }
-            self.atomic(|| {
+            self.with_interrupts_disabled(|| {
                 // Safe as interrupts are disabled
                 self.intc.complete(interrupt);
             });
@@ -111,6 +111,7 @@ impl<'a, I: InterruptService + 'a> Esp32C3<'a, I> {
 impl<'a, I: InterruptService + 'a> Chip for Esp32C3<'a, I> {
     type MPU = PMPUserMPU<8, SimplePMP<16>>;
     type UserspaceKernelBoundary = SysCall;
+    type ThreadIdProvider = rv32i::thread_id::RiscvThreadIdProvider;
 
     fn service_pending_interrupts(&self) {
         loop {
@@ -146,14 +147,14 @@ impl<'a, I: InterruptService + 'a> Chip for Esp32C3<'a, I> {
         }
     }
 
-    unsafe fn atomic<F, R>(&self, f: F) -> R
+    unsafe fn with_interrupts_disabled<F, R>(&self, f: F) -> R
     where
         F: FnOnce() -> R,
     {
-        rv32i::support::atomic(f)
+        rv32i::support::with_interrupts_disabled(f)
     }
 
-    unsafe fn print_state(&self, writer: &mut dyn Write) {
+    unsafe fn print_state(_this: Option<&Self>, writer: &mut dyn Write) {
         let mcval: csr::mcause::Trap = core::convert::From::from(csr::CSR.mcause.extract());
         let _ = writer.write_fmt(format_args!("\r\n---| RISC-V Machine State |---\r\n"));
         let _ = writer.write_fmt(format_args!("Last cause (mcause): "));
@@ -298,48 +299,55 @@ pub extern "C" fn _start_trap_vectored() {
 }
 
 #[cfg(any(doc, all(target_arch = "riscv32", target_os = "none")))]
-extern "C" {
-    pub fn _start_trap_vectored();
+#[link_section = ".riscv.trap_vectored"]
+#[unsafe(naked)]
+pub extern "C" fn _start_trap_vectored() -> ! {
+    use core::arch::naked_asm;
+    // Below are 32 (non-compressed) jumps to cover the entire possible
+    // range of vectored traps.
+    naked_asm!(
+        "
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        j {start_trap}
+        ",
+        start_trap = sym rv32i::_start_trap,
+    );
 }
 
-#[cfg(any(doc, all(target_arch = "riscv32", target_os = "none")))]
-// Below are 32 (non-compressed) jumps to cover the entire possible
-// range of vectored traps.
-core::arch::global_asm!(
-    "
-            .section .riscv.trap_vectored, \"ax\"
-            .globl _start_trap_vectored
-          _start_trap_vectored:
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-            j _start_trap
-        "
-);
+/// Array used to track the "trap handler active" state per hart.
+///
+/// The `riscv` crate requires chip crates to allocate an array to
+/// track whether any given hart is currently in a trap handler. The
+/// array must be zero-initialized.
+#[export_name = "_trap_handler_active"]
+static mut TRAP_HANDLER_ACTIVE: [usize; 1] = [0; 1];

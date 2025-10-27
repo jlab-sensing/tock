@@ -133,12 +133,16 @@ use core::ops::{Deref, DerefMut};
 use core::ptr::{write, NonNull};
 use core::slice;
 
+use crate::config;
+use crate::debug;
 use crate::kernel::Kernel;
+use crate::process::ProcessSlot;
 use crate::process::{Error, Process, ProcessCustomGrantIdentifier, ProcessId};
 use crate::processbuffer::{ReadOnlyProcessBuffer, ReadWriteProcessBuffer};
 use crate::processbuffer::{ReadOnlyProcessBufferRef, ReadWriteProcessBufferRef};
 use crate::upcall::{Upcall, UpcallError, UpcallId};
 use crate::utilities::capability_ptr::CapabilityPtr;
+use crate::utilities::machine_register::MachineRegister;
 use crate::ErrorCode;
 
 /// Tracks how many upcalls a grant instance supports automatically.
@@ -599,8 +603,19 @@ impl<'a> GrantKernelData<'a> {
         r: (usize, usize, usize),
     ) -> Result<(), UpcallError> {
         // Implement `self.upcalls[subscribe_num]` without a chance of a panic.
-        self.upcalls.get(subscribe_num).map_or(
-            Err(UpcallError::InvalidSubscribeNum),
+        self.upcalls.get(subscribe_num).map_or_else(
+            || {
+                if config::CONFIG.trace_syscalls {
+                    debug!(
+                        "[{:?}] schedule[{:#x}:{}] invalid subscribe_num",
+                        self.process.processid(),
+                        self.driver_num,
+                        subscribe_num,
+                    );
+                }
+
+                Err(UpcallError::InvalidSubscribeNum)
+            },
             |saved_upcall| {
                 // We can create an `Upcall` object based on what is stored in
                 // the process grant and use that to add the upcall to the
@@ -622,7 +637,7 @@ impl<'a> GrantKernelData<'a> {
     /// Search the work queue for the first pending operation with the given
     /// `subscribe_num` and if one exists remove it from the task queue.
     ///
-    /// Returns the associated [`Task`] if one was found, otherwise returns
+    /// Returns the associated [`Task`](crate::process::Task) if one was found, otherwise returns
     /// [`None`].
     pub fn remove_upcall(&self, subscribe_num: usize) -> Option<crate::process::Task> {
         self.process.remove_upcall(UpcallId {
@@ -661,7 +676,7 @@ impl<'a> GrantKernelData<'a> {
     pub fn get_readonly_processbuffer(
         &self,
         allow_ro_num: usize,
-    ) -> Result<ReadOnlyProcessBufferRef, crate::process::Error> {
+    ) -> Result<ReadOnlyProcessBufferRef<'_>, crate::process::Error> {
         self.allow_ro.get(allow_ro_num).map_or(
             Err(crate::process::Error::AddressOutOfBounds),
             |saved_ro| {
@@ -702,7 +717,7 @@ impl<'a> GrantKernelData<'a> {
     pub fn get_readwrite_processbuffer(
         &self,
         allow_rw_num: usize,
-    ) -> Result<ReadWriteProcessBufferRef, crate::process::Error> {
+    ) -> Result<ReadWriteProcessBufferRef<'_>, crate::process::Error> {
         self.allow_rw.get(allow_rw_num).map_or(
             Err(crate::process::Error::AddressOutOfBounds),
             |saved_rw| {
@@ -731,7 +746,7 @@ impl<'a> GrantKernelData<'a> {
 #[repr(C)]
 #[derive(Default)]
 struct SavedUpcall {
-    appdata: CapabilityPtr,
+    appdata: MachineRegister,
     fn_ptr: CapabilityPtr,
 }
 
@@ -744,6 +759,10 @@ struct SavedAllowRo {
     len: usize,
 }
 
+// This allow is still needed on the current stable compiler, but generates a warning
+// on the current nightly compiler, as of 05/18/2025. So allow this warning for now.
+// This can probably be fixed on the next nightly update.
+#[allow(clippy::derivable_impls)]
 impl Default for SavedAllowRo {
     fn default() -> Self {
         Self {
@@ -762,6 +781,10 @@ struct SavedAllowRw {
     len: usize,
 }
 
+// This allow is still needed on the current stable compiler, but generates a warning
+// on the current nightly compiler, as of 05/18/2025. So allow this warning for now.
+// This can probably be fixed on the next nightly update.
+#[allow(clippy::derivable_impls)]
 impl Default for SavedAllowRw {
     fn default() -> Self {
         Self {
@@ -793,7 +816,7 @@ unsafe fn write_default_array<T: Default>(base: *mut T, num: usize) {
 fn enter_grant_kernel_managed(
     process: &dyn Process,
     driver_num: usize,
-) -> Result<EnteredGrantKernelManagedLayout, ErrorCode> {
+) -> Result<EnteredGrantKernelManagedLayout<'_>, ErrorCode> {
     let grant_num = process.lookup_grant_from_driver_num(driver_num)?;
 
     // Check if the grant has been allocated, and if not we cannot enter this
@@ -802,7 +825,7 @@ fn enter_grant_kernel_managed(
         Some(true) => { /* Allocated, nothing to do */ }
         Some(false) => return Err(ErrorCode::NOMEM),
         None => return Err(ErrorCode::FAIL),
-    };
+    }
 
     // Return early if no grant.
     let grant_base_ptr = process.enter_grant(grant_num).or(Err(ErrorCode::NOMEM))?;
@@ -1788,7 +1811,7 @@ impl<T: Default, Upcalls: UpcallSize, AllowROs: AllowRoSize, AllowRWs: AllowRwSi
     ///
     /// Calling this function when an [`ProcessGrant`] for a process is
     /// currently entered will result in a panic.
-    pub fn iter(&self) -> Iter<T, Upcalls, AllowROs, AllowRWs> {
+    pub fn iter(&self) -> Iter<'_, T, Upcalls, AllowROs, AllowRWs> {
         Iter {
             grant: self,
             subiter: self.kernel.get_process_iter(),
@@ -1809,8 +1832,8 @@ pub struct Iter<
 
     /// Iterator over valid processes.
     subiter: core::iter::FilterMap<
-        core::slice::Iter<'a, Option<&'static dyn Process>>,
-        fn(&Option<&'static dyn Process>) -> Option<&'static dyn Process>,
+        core::slice::Iter<'a, ProcessSlot>,
+        fn(&ProcessSlot) -> Option<&'static dyn Process>,
     >,
 }
 
