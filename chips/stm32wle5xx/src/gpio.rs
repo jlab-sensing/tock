@@ -1106,7 +1106,7 @@ impl hil::gpio::Input for Pin<'_> {
 
 // TODO
 impl<'a> hil::gpio::Interrupt<'a> for Pin<'a> {
-    fn enable_interrupts(&self, mode: hil::gpio::InterruptEdge) {
+    fn enable_interrupts(&self, _mode: hil::gpio::InterruptEdge) {
         todo!()
     }
 
