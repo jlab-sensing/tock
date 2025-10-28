@@ -1507,6 +1507,7 @@ impl From<PLLPDivider> for usize {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) enum PLLRDivider {
     DivideBy2 = 0b001,
@@ -1532,6 +1533,7 @@ impl From<PLLRDivider> for usize {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) enum PLLQDivider {
     DivideBy2 = 0b001,
