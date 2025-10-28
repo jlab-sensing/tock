@@ -5,7 +5,7 @@
 use core::cell::Cell;
 
 use kernel::hil;
-use kernel::hil::i2c::{self, Error, I2CHwMasterClient, I2CMaster};
+use kernel::hil::i2c::{self, Error, I2CHwMasterClient};
 use kernel::platform::chip::ClockInterface;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -430,11 +430,6 @@ impl<'a> I2C<'a> {
                 .map(|buf| client.command_complete(buf, Err(err)))
         });
         self.stop();
-    }
-
-    fn reset(&self) {
-        self.disable();
-        self.enable();
     }
 
     fn start_write(&self) {
