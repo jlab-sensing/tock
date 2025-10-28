@@ -439,7 +439,6 @@ pub unsafe fn main() {
     let lora_spi_controller = components::spi::SpiSyscallComponent::new(
         board_kernel,
         lora_spi_mux,
-        1_000_000,
         chip_select,
         LORA_SPI_DRIVER_NUM,
     )
