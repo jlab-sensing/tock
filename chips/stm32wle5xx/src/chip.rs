@@ -55,9 +55,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
     }
 }
 
-impl<'a, ChipSpecs: ChipSpecsTrait> InterruptService
-    for Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
-{
+impl<ChipSpecs: ChipSpecsTrait> InterruptService for Stm32wle5xxDefaultPeripherals<'_, ChipSpecs> {
     unsafe fn service_interrupt(&self, interrupt: u32) -> bool {
         match interrupt {
             nvic::USART1 => self.usart1.handle_interrupt(),
@@ -114,7 +112,7 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
                     n.enable();
                 } else {
                     if let Some(radio_interrupt) = cortexm4::nvic::next_pending_with_mask((
-                        core::u128::MAX,
+                        u128::MAX,
                         !(1 << (crate::nvic::RADIO_IRQ % 32)),
                     )) {
                         // check to confirm we masked properly

@@ -167,7 +167,7 @@ impl<'a> Hsi<'a> {
 ///
 /// **NOTE:** All these tests assume default boot configuration.
 pub mod tests {
-    use super::*;
+    use super::{debug, Hsi, HSI_FREQUENCY_MHZ};
 
     /// Run the entire test suite.
     pub fn run(hsi: &Hsi) {
@@ -185,7 +185,7 @@ pub mod tests {
         assert_eq!(Ok(()), hsi.enable());
 
         // Impossible to disable the HSI clock since it is the system clock source
-        assert_eq!(Err(ErrorCode::FAIL), hsi.disable());
+        assert_eq!(Err(kernel::ErrorCode::FAIL), hsi.disable());
 
         debug!("Finished testing HSI. Everything is alright!");
         debug!("===============================================");

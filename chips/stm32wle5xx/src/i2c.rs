@@ -414,8 +414,6 @@ impl<'a> I2C<'a> {
                     self.handle_error(Error::ArbitrationLost);
                 }
             }
-
-            return;
         }
     }
 

@@ -1,3 +1,7 @@
+// Licensed under the Apache License, Version 2.0 or the MIT License.
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// Copyright Tock Contributors 2025.
+
 // Wrapper to read and clear interrupts from the Sub-GHz radio.
 // This is a bit of a workaround for now and should eventually
 // be replaced.
@@ -54,10 +58,10 @@ impl VirtualGpioReader for SubGhzRadioSignals {
         // check here to see if any other interrupts are pending.
         unsafe {
             cortexm4::nvic::next_pending_with_mask((
-                core::u128::MAX,
+                u128::MAX,
                 !(1 << (crate::nvic::RADIO_IRQ % 32)),
             ))
-            .map_or(false, |_| true)
+            .is_some_and(|_| true)
         }
     }
     fn write(&self, _val: u32) {
@@ -120,14 +124,13 @@ impl<'a> Interrupt<'a> for SubGhzRadioVirtualGpio<'a> {
     }
 }
 
-impl<'a> Input for SubGhzRadioVirtualGpio<'a> {
+impl Input for SubGhzRadioVirtualGpio<'_> {
     fn read(&self) -> bool {
-        let res = self.reader.read();
-        res
+        self.reader.read()
     }
 }
 
-impl<'a> Output for SubGhzRadioVirtualGpio<'a> {
+impl Output for SubGhzRadioVirtualGpio<'_> {
     fn clear(&self) {
         // do nothing
     }
@@ -142,7 +145,7 @@ impl<'a> Output for SubGhzRadioVirtualGpio<'a> {
     }
 }
 
-impl<'a> Configure for SubGhzRadioVirtualGpio<'a> {
+impl Configure for SubGhzRadioVirtualGpio<'_> {
     fn configuration(&self) -> kernel::hil::gpio::Configuration {
         unimplemented!()
     }

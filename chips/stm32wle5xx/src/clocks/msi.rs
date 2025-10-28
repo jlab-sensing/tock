@@ -167,7 +167,7 @@ impl<'a> Msi<'a> {
 ///
 /// **NOTE:** All these tests assume default boot configuration.
 pub mod tests {
-    use super::*;
+    use super::{debug, ErrorCode, Msi, MSI_FREQUENCY_MHZ};
 
     /// Run the entire test suite.
     pub fn run(msi: &Msi) {
