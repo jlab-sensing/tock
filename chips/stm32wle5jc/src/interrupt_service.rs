@@ -11,13 +11,9 @@ pub struct Stm32wle5jcDefaultPeripherals<'a> {
 }
 
 impl<'a> Stm32wle5jcDefaultPeripherals<'a> {
-    pub unsafe fn new(
-        clocks: &'a crate::clocks::Clocks<'a, Stm32wle5jcSpecs>,
-        exti: &'a crate::exti::Exti<'a>,
-        syscfg: &'a crate::syscfg::Syscfg,
-    ) -> Self {
+    pub unsafe fn new(clocks: &'a crate::clocks::Clocks<'a, Stm32wle5jcSpecs>) -> Self {
         Self {
-            stm32wle: Stm32wle5xxDefaultPeripherals::new(clocks, exti, syscfg),
+            stm32wle: Stm32wle5xxDefaultPeripherals::new(clocks),
         }
     }
     // Necessary for setting up circular dependencies & registering deferred
