@@ -176,7 +176,6 @@ impl<'a, A: AES128<'a> + AES128Ctr> EncryptionOracleDriver<'a, A> {
 
                                 AES128::set_iv(self.aes, &static_buf[..copy_len])
                             })
-                            .map_err(Into::into)
                         })??;
                 }
 
@@ -252,12 +251,10 @@ impl<'a, A: AES128<'a> + AES128Ctr> EncryptionOracleDriver<'a, A> {
                 grant.request_pending = false;
 
                 if let Err(e) = res {
-                    kernel_data
-                        .schedule_upcall(
-                            upcall::DONE,
-                            (kernel::errorcode::into_statuscode(Err(e)), 0, 0),
-                        )
-                        .ok();
+                    let _ = kernel_data.schedule_upcall(
+                        upcall::DONE,
+                        (kernel::errorcode::into_statuscode(Err(e)), 0, 0),
+                    );
                 }
             });
         }

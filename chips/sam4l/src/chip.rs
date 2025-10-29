@@ -20,7 +20,7 @@ pub struct Sam4l<I: InterruptService + 'static> {
 impl<I: InterruptService + 'static> Sam4l<I> {
     pub unsafe fn new(pm: &'static crate::pm::PowerManager, interrupt_service: &'static I) -> Self {
         Self {
-            mpu: cortexm4::mpu::MPU::new(),
+            mpu: cortexm4::mpu::new(),
             userspace_kernel_boundary: cortexm4::syscall::SysCall::new(),
             pm,
             interrupt_service,
@@ -238,21 +238,18 @@ impl InterruptService for Sam4lDefaultPeripherals {
 impl<I: InterruptService + 'static> Chip for Sam4l<I> {
     type MPU = cortexm4::mpu::MPU;
     type UserspaceKernelBoundary = cortexm4::syscall::SysCall;
+    type ThreadIdProvider = cortexm4::thread_id::CortexMThreadIdProvider;
 
     fn service_pending_interrupts(&self) {
         unsafe {
-            loop {
-                if let Some(interrupt) = cortexm4::nvic::next_pending() {
-                    match self.interrupt_service.service_interrupt(interrupt) {
-                        true => {}
-                        false => panic!("unhandled interrupt"),
-                    }
-                    let n = cortexm4::nvic::Nvic::new(interrupt);
-                    n.clear_pending();
-                    n.enable();
-                } else {
-                    break;
+            while let Some(interrupt) = cortexm4::nvic::next_pending() {
+                match self.interrupt_service.service_interrupt(interrupt) {
+                    true => {}
+                    false => panic!("unhandled interrupt"),
                 }
+                let n = cortexm4::nvic::Nvic::new(interrupt);
+                n.clear_pending();
+                n.enable();
             }
         }
     }
@@ -285,14 +282,14 @@ impl<I: InterruptService + 'static> Chip for Sam4l<I> {
         }
     }
 
-    unsafe fn atomic<F, R>(&self, f: F) -> R
+    unsafe fn with_interrupts_disabled<F, R>(&self, f: F) -> R
     where
         F: FnOnce() -> R,
     {
-        cortexm4::support::atomic(f)
+        cortexm4::support::with_interrupts_disabled(f)
     }
 
-    unsafe fn print_state(&self, writer: &mut dyn Write) {
+    unsafe fn print_state(_this: Option<&Self>, writer: &mut dyn Write) {
         CortexM4::print_cortexm_state(writer);
     }
 }

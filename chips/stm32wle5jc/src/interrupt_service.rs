@@ -22,10 +22,11 @@ impl<'a> Stm32wle5jcDefaultPeripherals<'a> {
         self.stm32wle.setup_circular_deps();
     }
 }
-impl<'a> kernel::platform::chip::InterruptService for Stm32wle5jcDefaultPeripherals<'a> {
+impl kernel::platform::chip::InterruptService for Stm32wle5jcDefaultPeripherals<'_> {
     unsafe fn service_interrupt(&self, interrupt: u32) -> bool {
+        #[allow(clippy::match_single_binding)]
         match interrupt {
-            // put Stm32f446re specific interrupts here
+            // put Stm32wle5jc specific interrupts here
             _ => self.stm32wle.service_interrupt(interrupt),
         }
     }

@@ -55,9 +55,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
     }
 }
 
-impl<'a, ChipSpecs: ChipSpecsTrait> InterruptService
-    for Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
-{
+impl<ChipSpecs: ChipSpecsTrait> InterruptService for Stm32wle5xxDefaultPeripherals<'_, ChipSpecs> {
     unsafe fn service_interrupt(&self, interrupt: u32) -> bool {
         match interrupt {
             nvic::USART1 => self.usart1.handle_interrupt(),
@@ -87,7 +85,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> InterruptService
 impl<'a, I: InterruptService + 'a> Stm32wle5xx<'a, I> {
     pub unsafe fn new(interrupt_service: &'a I) -> Self {
         Self {
-            mpu: cortexm4::mpu::MPU::new(),
+            mpu: cortexm4::mpu::new(),
             userspace_kernel_boundary: cortexm4::syscall::SysCall::new(),
             interrupt_service,
         }
@@ -97,12 +95,13 @@ impl<'a, I: InterruptService + 'a> Stm32wle5xx<'a, I> {
 impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
     type MPU = cortexm4::mpu::MPU;
     type UserspaceKernelBoundary = cortexm4::syscall::SysCall;
+    type ThreadIdProvider = cortexm4::thread_id::CortexMThreadIdProvider;
 
     fn service_pending_interrupts(&self) {
         unsafe {
             loop {
                 if let Some(interrupt) =
-                    cortexm4::nvic::next_pending_with_mask((0, 1 << (crate::nvic::RADIO_IRQ % 32)))
+                    cortexm4::nvic::next_pending_with_mask((0, 1u128 << crate::nvic::RADIO_IRQ))
                 {
                     if !self.interrupt_service.service_interrupt(interrupt) {
                         panic!("unhandled interrupt {}", interrupt);
@@ -113,8 +112,8 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
                     n.enable();
                 } else {
                     if let Some(radio_interrupt) = cortexm4::nvic::next_pending_with_mask((
-                        core::u128::MAX,
-                        !(1 << (crate::nvic::RADIO_IRQ % 32)),
+                        u128::MAX,
+                        !(1u128 << crate::nvic::RADIO_IRQ),
                     )) {
                         // check to confirm we masked properly
                         assert!(radio_interrupt == crate::nvic::RADIO_IRQ);
@@ -129,7 +128,7 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
     }
 
     fn has_pending_interrupts(&self) -> bool {
-        unsafe { cortexm4::nvic::has_pending_with_mask((0, 1 << (crate::nvic::RADIO_IRQ % 32))) }
+        unsafe { cortexm4::nvic::has_pending_with_mask((0, 1u128 << crate::nvic::RADIO_IRQ)) }
     }
 
     fn mpu(&self) -> &cortexm4::mpu::MPU {
@@ -140,6 +139,13 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
         &self.userspace_kernel_boundary
     }
 
+    unsafe fn with_interrupts_disabled<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        cortexm4::support::with_interrupts_disabled(f)
+    }
+
     fn sleep(&self) {
         unsafe {
             cortexm4::scb::unset_sleepdeep();
@@ -147,14 +153,7 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
         }
     }
 
-    unsafe fn atomic<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce() -> R,
-    {
-        cortexm4::support::atomic(f)
-    }
-
-    unsafe fn print_state(&self, write: &mut dyn Write) {
+    unsafe fn print_state(_this: Option<&Self>, write: &mut dyn Write) {
         CortexM4::print_cortexm_state(write);
     }
 }

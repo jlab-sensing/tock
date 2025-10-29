@@ -5,17 +5,12 @@
 //! Tock kernel for the Nordic Semiconductor nRF52840 development kit (DK).
 
 #![no_std]
-// Disable this attribute when documenting, as a workaround for
-// https://github.com/rust-lang/rust/issues/62184.
-#![cfg_attr(not(doc), no_main)]
+#![no_main]
 #![deny(missing_docs)]
-
-use core::ptr::addr_of_mut;
 
 use kernel::debug;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::{capabilities, create_capability};
-use nrf52840dk_lib::{self, PROCESSES};
 
 // State for loading and holding applications.
 // How should the kernel respond when a process faults.
@@ -43,17 +38,17 @@ impl SyscallDriverLookup for Platform {
     }
 }
 
-type Chip = nrf52840dk_lib::Chip;
+type ChipHw = nrf52840dk_lib::ChipHw;
 
-impl KernelResources<Chip> for Platform {
+impl KernelResources<ChipHw> for Platform {
     type SyscallDriverLookup = Self;
-    type SyscallFilter = <nrf52840dk_lib::Platform as KernelResources<Chip>>::SyscallFilter;
-    type ProcessFault = <nrf52840dk_lib::Platform as KernelResources<Chip>>::ProcessFault;
-    type Scheduler = <nrf52840dk_lib::Platform as KernelResources<Chip>>::Scheduler;
-    type SchedulerTimer = <nrf52840dk_lib::Platform as KernelResources<Chip>>::SchedulerTimer;
-    type WatchDog = <nrf52840dk_lib::Platform as KernelResources<Chip>>::WatchDog;
+    type SyscallFilter = <nrf52840dk_lib::Platform as KernelResources<ChipHw>>::SyscallFilter;
+    type ProcessFault = <nrf52840dk_lib::Platform as KernelResources<ChipHw>>::ProcessFault;
+    type Scheduler = <nrf52840dk_lib::Platform as KernelResources<ChipHw>>::Scheduler;
+    type SchedulerTimer = <nrf52840dk_lib::Platform as KernelResources<ChipHw>>::SchedulerTimer;
+    type WatchDog = <nrf52840dk_lib::Platform as KernelResources<ChipHw>>::WatchDog;
     type ContextSwitchCallback =
-        <nrf52840dk_lib::Platform as KernelResources<Chip>>::ContextSwitchCallback;
+        <nrf52840dk_lib::Platform as KernelResources<ChipHw>>::ContextSwitchCallback;
 
     fn syscall_driver_lookup(&self) -> &Self::SyscallDriverLookup {
         self
@@ -123,7 +118,6 @@ pub unsafe fn main() {
             core::ptr::addr_of_mut!(_sappmem),
             core::ptr::addr_of!(_eappmem) as usize - core::ptr::addr_of!(_sappmem) as usize,
         ),
-        &mut *addr_of_mut!(PROCESSES),
         &FAULT_RESPONSE,
         &process_management_capability,
     )

@@ -116,7 +116,6 @@ pub struct SpiMuxComponent<S: 'static + spi::SpiMaster<'static>> {
 pub struct SpiSyscallComponent<S: 'static + spi::SpiMaster<'static>> {
     board_kernel: &'static kernel::Kernel,
     spi_mux: &'static MuxSpiMaster<'static, S>,
-    baud_rate: u32,
     chip_select: S::ChipSelect,
     driver_num: usize,
 }
@@ -165,14 +164,12 @@ impl<S: 'static + spi::SpiMaster<'static>> SpiSyscallComponent<S> {
     pub fn new(
         board_kernel: &'static kernel::Kernel,
         mux: &'static MuxSpiMaster<'static, S>,
-        baud_rate: u32,
         chip_select: S::ChipSelect,
         driver_num: usize,
     ) -> Self {
         SpiSyscallComponent {
             board_kernel,
             spi_mux: mux,
-            baud_rate,
             chip_select,
             driver_num,
         }
@@ -194,12 +191,6 @@ impl<S: 'static + spi::SpiMaster<'static>> Component for SpiSyscallComponent<S> 
         let syscall_spi_device = static_buffer
             .0
             .write(VirtualSpiMasterDevice::new(self.spi_mux, self.chip_select));
-
-        let _ = syscall_spi_device.configure(
-            syscall_spi_device.get_polarity(),
-            syscall_spi_device.get_phase(),
-            self.baud_rate,
-        );
 
         let spi_syscalls = static_buffer.1.write(Spi::new(
             syscall_spi_device,

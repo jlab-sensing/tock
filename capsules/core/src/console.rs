@@ -212,19 +212,16 @@ impl<'a> Console<'a> {
                     })
                     .unwrap_or(0);
                 app.write_remaining -= transaction_len;
-                match self.uart.transmit_buffer(buffer, transaction_len) {
-                    Err((_e, tx_buffer)) => {
-                        // The UART didn't start, so we will not get a transmit
-                        // done callback. Need to signal the app now.
-                        self.tx_buffer.replace(tx_buffer);
-                        self.tx_in_progress.clear();
+                if let Err((_e, tx_buffer)) = self.uart.transmit_buffer(buffer, transaction_len) {
+                    // The UART didn't start, so we will not get a transmit
+                    // done callback. Need to signal the app now.
+                    self.tx_buffer.replace(tx_buffer);
+                    self.tx_in_progress.clear();
 
-                        // Go ahead and signal the application
-                        let written = app.write_len;
-                        app.write_len = 0;
-                        kernel_data.schedule_upcall(1, (written, 0, 0)).ok();
-                    }
-                    Ok(()) => {}
+                    // Go ahead and signal the application
+                    let written = app.write_len;
+                    app.write_len = 0;
+                    let _ = kernel_data.schedule_upcall(1, (written, 0, 0));
                 }
             });
         } else {
@@ -277,12 +274,12 @@ impl SyscallDriver for Console<'_> {
     /// ### `command_num`
     ///
     /// - `0`: Driver existence check.
-    /// - `1`: Transmits a buffer passed via `allow`, up to the length
-    ///        passed in `arg1`
+    /// - `1`: Transmits a buffer passed via `allow`, up to the length passed in
+    ///   `arg1`
     /// - `2`: Receives into a buffer passed via `allow`, up to the length
-    ///        passed in `arg1`
-    /// - `3`: Cancel any in progress receives and return (via callback)
-    ///        what has been received so far.
+    ///   passed in `arg1`
+    /// - `3`: Cancel any in progress receives and return (via callback) what
+    ///   has been received so far.
     fn command(
         &self,
         cmd_num: usize,
@@ -346,9 +343,7 @@ impl uart::TransmitClient for Console<'_> {
                         // Go ahead and signal the application
                         let written = app.write_len;
                         app.write_len = 0;
-                        kernel_data
-                            .schedule_upcall(upcall::WRITE_DONE, (written, 0, 0))
-                            .ok();
+                        let _ = kernel_data.schedule_upcall(upcall::WRITE_DONE, (written, 0, 0));
                     }
                 }
             })
@@ -444,31 +439,21 @@ impl uart::ReceiveClient for Console<'_> {
                                     (rcode, rx_len)
                                 };
 
-                                kernel_data
-                                    .schedule_upcall(
-                                        upcall::READ_DONE,
-                                        (
-                                            kernel::errorcode::into_statuscode(ret),
-                                            received_length,
-                                            0,
-                                        ),
-                                    )
-                                    .ok();
+                                let _ = kernel_data.schedule_upcall(
+                                    upcall::READ_DONE,
+                                    (kernel::errorcode::into_statuscode(ret), received_length, 0),
+                                );
                             }
                             _ => {
                                 // Some UART error occurred
-                                kernel_data
-                                    .schedule_upcall(
-                                        upcall::READ_DONE,
-                                        (
-                                            kernel::errorcode::into_statuscode(Err(
-                                                ErrorCode::FAIL,
-                                            )),
-                                            0,
-                                            0,
-                                        ),
-                                    )
-                                    .ok();
+                                let _ = kernel_data.schedule_upcall(
+                                    upcall::READ_DONE,
+                                    (
+                                        kernel::errorcode::into_statuscode(Err(ErrorCode::FAIL)),
+                                        0,
+                                        0,
+                                    ),
+                                );
                             }
                         }
                     })

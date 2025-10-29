@@ -81,6 +81,7 @@ use kernel::hil::time::Counter;
 #[allow(unused_imports)]
 use kernel::hil::usb::Client;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
+use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
 #[allow(unused_imports)]
 use kernel::{capabilities, create_capability, debug, debug_gpio, debug_verbose, static_init};
@@ -135,23 +136,18 @@ pub mod io;
 const USB_DEBUGGING: bool = false;
 
 /// This platform's chip type:
-pub type Chip = nrf52840::chip::NRF52<'static, Nrf52840DefaultPeripherals<'static>>;
+pub type ChipHw = nrf52840::chip::NRF52<'static, Nrf52840DefaultPeripherals<'static>>;
 
 /// Number of concurrent processes this platform supports.
 pub const NUM_PROCS: usize = 8;
 
-/// Process array of this platform.
-pub static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS] =
-    [None; NUM_PROCS];
-
+/// Static variables used by io.rs.
+static mut PROCESSES: Option<&'static ProcessArray<NUM_PROCS>> = None;
 static mut CHIP: Option<&'static nrf52840::chip::NRF52<Nrf52840DefaultPeripherals>> = None;
 static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
     None;
 
-/// Dummy buffer that causes the linker to reserve enough space for the stack.
-#[no_mangle]
-#[link_section = ".stack_buffer"]
-pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
+kernel::stack_size! {0x2000}
 
 //------------------------------------------------------------------------------
 // SYSCALL DRIVER TYPE DEFINITIONS
@@ -270,7 +266,7 @@ impl SyscallDriverLookup for Platform {
     }
 }
 
-impl KernelResources<Chip> for Platform {
+impl KernelResources<ChipHw> for Platform {
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
@@ -396,10 +392,10 @@ pub unsafe fn ieee802154_udp(
 /// removed when this function returns. Otherwise, the stack space used for
 /// these static_inits is wasted.
 #[inline(never)]
-pub unsafe fn start() -> (
+pub unsafe fn start_no_pconsole() -> (
     &'static kernel::Kernel,
     Platform,
-    &'static Chip,
+    &'static ChipHw,
     &'static Nrf52840DefaultPeripherals<'static>,
     &'static MuxAlarm<'static, nrf52840::rtc::Rtc<'static>>,
 ) {
@@ -439,26 +435,31 @@ pub unsafe fn start() -> (
     let uart_channel = if USB_DEBUGGING {
         // Initialize early so any panic beyond this point can use the RTT
         // memory object.
-        let mut rtt_memory_refs = components::segger_rtt::SeggerRttMemoryComponent::new()
+        let rtt_memory_refs = components::segger_rtt::SeggerRttMemoryComponent::new()
             .finalize(components::segger_rtt_memory_component_static!());
 
         // XXX: This is inherently unsafe as it aliases the mutable reference to
         // rtt_memory. This aliases reference is only used inside a panic
         // handler, which should be OK, but maybe we should use a const
         // reference to rtt_memory and leverage interior mutability instead.
-        self::io::set_rtt_memory(&*rtt_memory_refs.get_rtt_memory_ptr());
+        self::io::set_rtt_memory(&*core::ptr::from_mut(rtt_memory_refs.rtt_memory));
 
         UartChannel::Rtt(rtt_memory_refs)
     } else {
         UartChannel::Pins(UartPins::new(UART_RTS, UART_TXD, UART_CTS, UART_RXD))
     };
 
+    // Create an array to hold process references.
+    let processes = components::process_array::ProcessArrayComponent::new()
+        .finalize(components::process_array_component_static!(NUM_PROCS));
+    PROCESSES = Some(processes);
+
     // Setup space to store the core kernel data structure.
-    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&*addr_of!(PROCESSES)));
+    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(processes.as_slice()));
 
     // Create (and save for panic debugging) a chip object to setup low-level
     // resources (e.g. MPU, systick).
-    let chip = static_init!(Chip, nrf52840::chip::NRF52::new(nrf52840_peripherals));
+    let chip = static_init!(ChipHw, nrf52840::chip::NRF52::new(nrf52840_peripherals));
     CHIP = Some(chip);
 
     // Do nRF configuration and setup. This is shared code with other nRF-based
@@ -619,8 +620,13 @@ pub unsafe fn start() -> (
     .finalize(components::console_component_static!());
 
     // Create the debugger object that handles calls to `debug!()`.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
-        .finalize(components::debug_writer_component_static!());
+    components::debug_writer::DebugWriterComponent::new::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >(
+        uart_mux,
+        create_capability!(capabilities::SetDebugWriterCapability),
+    )
+    .finalize(components::debug_writer_component_static!());
 
     //--------------------------------------------------------------------------
     // BLE
@@ -815,11 +821,15 @@ pub unsafe fn start() -> (
 
     // Initialize AC using AIN5 (P0.29) as VIN+ and VIN- as AIN0 (P0.02)
     // These are hardcoded pin assignments specified in the driver
+    let analog_comparator_channel = static_init!(
+        nrf52840::acomp::Channel,
+        nrf52840::acomp::Channel::new(nrf52840::acomp::ChannelNumber::AC0)
+    );
     let analog_comparator = components::analog_comparator::AnalogComparatorComponent::new(
         &base_peripherals.acomp,
         components::analog_comparator_component_helper!(
             nrf52840::acomp::Channel,
-            &*addr_of!(nrf52840::acomp::CHANNEL_AC0)
+            analog_comparator_channel
         ),
         board_kernel,
         capsules_extra::analog_comparator::DRIVER_NUM,
@@ -885,7 +895,7 @@ pub unsafe fn start() -> (
     // PLATFORM SETUP, SCHEDULER, AND START KERNEL LOOP
     //--------------------------------------------------------------------------
 
-    let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
+    let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
     let platform = Platform {
@@ -912,7 +922,6 @@ pub unsafe fn start() -> (
         systick: cortexm4::systick::SysTick::new_with_calibration(64000000),
     };
 
-    let _ = platform.pconsole.start();
     base_peripherals.adc.calibrate();
 
     debug!("Initialization complete. Entering main loop\r");
@@ -925,4 +934,20 @@ pub unsafe fn start() -> (
         nrf52840_peripherals,
         mux_alarm,
     )
+}
+
+/// This is in a separate, inline(never) function so that its stack frame is
+/// removed when this function returns. Otherwise, the stack space used for
+/// these static_inits is wasted.
+#[inline(never)]
+pub unsafe fn start() -> (
+    &'static kernel::Kernel,
+    Platform,
+    &'static ChipHw,
+    &'static Nrf52840DefaultPeripherals<'static>,
+    &'static MuxAlarm<'static, nrf52840::rtc::Rtc<'static>>,
+) {
+    let (kernel, platform, chip, peripherals, mux_alarm) = start_no_pconsole();
+    let _ = platform.pconsole.start();
+    (kernel, platform, chip, peripherals, mux_alarm)
 }

@@ -139,20 +139,28 @@ impl<'a> PeripheralClock<'a> {
     }
 }
 
-impl<'a> ClockInterface for PeripheralClock<'a> {
+impl ClockInterface for PeripheralClock<'_> {
     fn is_enabled(&self) -> bool {
         let rcc = self.clocks.get_rcc();
         match self.clock {
             PeripheralClockType::AHB1(ref v) => match v {
                 HCLK1::DMA1 => rcc.is_enabled_dma1_clock(),
                 HCLK1::DMA2 => rcc.is_enabled_dma2_clock(),
-                _ => unimplemented!(),
+                HCLK1::CRC => unimplemented!(),
+                HCLK1::DMAMUX1 => unimplemented!(),
             },
             PeripheralClockType::AHB2(ref v) => match v {
-                _ => unimplemented!(),
+                HCLK2::GPIOA => rcc.is_enabled_gpioa_clock(),
+                HCLK2::GPIOB => rcc.is_enabled_gpiob_clock(),
+                HCLK2::GPIOC => rcc.is_enabled_gpioc_clock(),
+                HCLK2::GPIOH => rcc.is_enabled_gpioh_clock(),
             },
             PeripheralClockType::AHB3(ref v) => match v {
-                _ => unimplemented!(),
+                HCLK3::AES => unimplemented!(),
+                HCLK3::PKA => unimplemented!(),
+                HCLK3::RNG => rcc.is_enabled_rng_clock(),
+                HCLK3::HSEM => unimplemented!(),
+                HCLK3::FLASH => unimplemented!(),
             },
             PeripheralClockType::APB1(ref v) => match v {
                 PCLK1::TIM2 => rcc.is_enabled_tim2_clock(),
@@ -160,12 +168,22 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 PCLK1::I2C1 => rcc.is_enabled_i2c1_clock(),
                 PCLK1::I2C2 => rcc.is_enabled_i2c2_clock(),
                 PCLK1::DAC => rcc.is_enabled_dac_clock(),
-                _ => unimplemented!(),
+                PCLK1::RTCAPB => unimplemented!(),
+                PCLK1::LPTIM1 => unimplemented!(),
+                PCLK1::LPTIM2 => unimplemented!(),
+                PCLK1::LPTIM3 => unimplemented!(),
+                PCLK1::LPUART1 => unimplemented!(),
+                PCLK1::WWDG => unimplemented!(),
+                PCLK1::SPI2S2 => unimplemented!(),
+                PCLK1::I2C3 => unimplemented!(),
             },
             PeripheralClockType::APB2(ref v) => match v {
                 PCLK2::USART1 => rcc.is_enabled_usart1_clock(),
                 PCLK2::SPI1 => rcc.is_enabled_spi1_clock(),
-                _ => unimplemented!(),
+                PCLK2::ADC => rcc.is_enabled_adc1_clock(),
+                PCLK2::TIM1 => unimplemented!(),
+                PCLK2::TIM16 => unimplemented!(),
+                PCLK2::TIM17 => unimplemented!(),
             },
             PeripheralClockType::RTC => rcc.is_enabled_rtc_clock(),
             PeripheralClockType::APB3(ref v) => match v {
@@ -184,7 +202,12 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 HCLK1::DMA2 => {
                     rcc.enable_dma2_clock();
                 }
-                _ => unimplemented!(),
+                HCLK1::CRC => {
+                    unimplemented!()
+                }
+                HCLK1::DMAMUX1 => {
+                    unimplemented!()
+                }
             },
             PeripheralClockType::AHB2(ref v) => match v {
                 HCLK2::GPIOA => {
@@ -193,10 +216,29 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 HCLK2::GPIOB => {
                     rcc.enable_gpiob_clock();
                 }
-                _ => unimplemented!(),
+                HCLK2::GPIOC => {
+                    rcc.enable_gpioc_clock();
+                }
+                HCLK2::GPIOH => {
+                    rcc.enable_gpioh_clock();
+                }
             },
             PeripheralClockType::AHB3(ref v) => match v {
-                _ => unimplemented!(),
+                HCLK3::AES => {
+                    unimplemented!()
+                }
+                HCLK3::PKA => {
+                    unimplemented!()
+                }
+                HCLK3::RNG => {
+                    rcc.enable_rng_clock();
+                }
+                HCLK3::HSEM => {
+                    unimplemented!()
+                }
+                HCLK3::FLASH => {
+                    unimplemented!()
+                }
             },
             PeripheralClockType::APB1(ref v) => match v {
                 PCLK1::TIM2 => {
@@ -214,12 +256,46 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 PCLK1::DAC => {
                     rcc.enable_dac_clock();
                 }
-                _ => unimplemented!(),
+                PCLK1::RTCAPB => {
+                    unimplemented!()
+                }
+                PCLK1::LPTIM1 => {
+                    unimplemented!()
+                }
+                PCLK1::LPTIM2 => {
+                    unimplemented!()
+                }
+                PCLK1::LPTIM3 => {
+                    unimplemented!()
+                }
+                PCLK1::LPUART1 => {
+                    unimplemented!()
+                }
+                PCLK1::WWDG => {
+                    unimplemented!()
+                }
+                PCLK1::SPI2S2 => {
+                    unimplemented!()
+                }
+                PCLK1::I2C3 => {
+                    unimplemented!()
+                }
             },
             PeripheralClockType::APB2(ref v) => match v {
                 PCLK2::USART1 => rcc.enable_usart1_clock(),
                 PCLK2::SPI1 => rcc.enable_spi1_clock(),
-                _ => unimplemented!(),
+                PCLK2::ADC => {
+                    rcc.enable_adc1_clock();
+                }
+                PCLK2::TIM1 => {
+                    unimplemented!()
+                }
+                PCLK2::TIM16 => {
+                    unimplemented!()
+                }
+                PCLK2::TIM17 => {
+                    unimplemented!()
+                }
             },
             PeripheralClockType::RTC => rcc.enable_rtc_clock(RtcClockSource::LSI),
             PeripheralClockType::APB3(ref v) => match v {
@@ -238,13 +314,43 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 HCLK1::DMA2 => {
                     rcc.disable_dma2_clock();
                 }
-                _ => unimplemented!(),
+                HCLK1::CRC => {
+                    unimplemented!()
+                }
+                HCLK1::DMAMUX1 => {
+                    unimplemented!()
+                }
             },
             PeripheralClockType::AHB2(ref v) => match v {
-                _ => unimplemented!(),
+                HCLK2::GPIOA => {
+                    rcc.disable_gpioa_clock();
+                }
+                HCLK2::GPIOB => {
+                    rcc.disable_gpiob_clock();
+                }
+                HCLK2::GPIOC => {
+                    rcc.disable_gpioc_clock();
+                }
+                HCLK2::GPIOH => {
+                    rcc.disable_gpioh_clock();
+                }
             },
             PeripheralClockType::AHB3(ref v) => match v {
-                _ => unimplemented!(),
+                HCLK3::AES => {
+                    unimplemented!()
+                }
+                HCLK3::PKA => {
+                    unimplemented!()
+                }
+                HCLK3::RNG => {
+                    rcc.disable_rng_clock();
+                }
+                HCLK3::HSEM => {
+                    unimplemented!()
+                }
+                HCLK3::FLASH => {
+                    unimplemented!()
+                }
             },
             PeripheralClockType::APB1(ref v) => match v {
                 PCLK1::TIM2 => {
@@ -262,12 +368,46 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 PCLK1::I2C2 => {
                     rcc.disable_i2c2_clock();
                 }
-                _ => unimplemented!(),
+                PCLK1::RTCAPB => {
+                    unimplemented!()
+                }
+                PCLK1::LPTIM1 => {
+                    unimplemented!()
+                }
+                PCLK1::LPTIM2 => {
+                    unimplemented!()
+                }
+                PCLK1::LPTIM3 => {
+                    unimplemented!()
+                }
+                PCLK1::LPUART1 => {
+                    unimplemented!()
+                }
+                PCLK1::WWDG => {
+                    unimplemented!()
+                }
+                PCLK1::SPI2S2 => {
+                    unimplemented!()
+                }
+                PCLK1::I2C3 => {
+                    unimplemented!()
+                }
             },
             PeripheralClockType::APB2(ref v) => match v {
                 PCLK2::USART1 => rcc.disable_usart1_clock(),
                 PCLK2::SPI1 => rcc.disable_spi1_clock(),
-                _ => unimplemented!(),
+                PCLK2::ADC => {
+                    rcc.disable_adc1_clock();
+                }
+                PCLK2::TIM1 => {
+                    unimplemented!()
+                }
+                PCLK2::TIM16 => {
+                    unimplemented!()
+                }
+                PCLK2::TIM17 => {
+                    unimplemented!()
+                }
             },
             PeripheralClockType::RTC => rcc.disable_rtc_clock(),
             PeripheralClockType::APB3(ref v) => match v {

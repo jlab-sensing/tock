@@ -17,6 +17,7 @@ Tock Policies
 
 ### Tock Setup and Development
 - **[Getting Started](Getting_Started.md)** - Installing the Tock toolchain and programming hardware.
+- **[Code Goals](CodeGoals.md)** - Conventions for Tock development.
 - **[Repository Structure](Repository.md)** - How the tock/ repo is organized.
 - **[Nested Boards](NestedBoards.md)** - How Tock supports nesting board platforms.
 - **[Out of Tree Boards](OutOfTree.md)** - Best practices for maintaining boards not in Tock master.
@@ -27,3 +28,4 @@ Tock Policies
 - **[Working Groups](wg)** - Development groups for specific aspects of Tock.
 - **[Code Review Process](CodeReview.md)** - Process for pull request reviews.
 - **[Tock Management](Maintenance.md)** - Management processes for Tock, including releases.
+- **[Security Protocol](SecurityProtocol.md)** - Procedures for security vulnerability reporting, response, and disclosure.

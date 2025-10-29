@@ -95,7 +95,7 @@
 /// Kernel major version.
 ///
 /// This is compiled with the crate to enable for checking of compatibility with
-/// loaded apps. Both major and minor version constants are updated during a
+/// loaded apps. Major, minor and patch version constants are updated during a
 /// release.
 pub const KERNEL_MAJOR_VERSION: u16 = 2;
 /// Kernel minor version.
@@ -155,6 +155,7 @@ pub mod collections;
 pub mod component;
 pub mod debug;
 pub mod deferred_call;
+pub mod dynamic_binary_storage;
 pub mod errorcode;
 pub mod grant;
 pub mod hil;
@@ -173,6 +174,7 @@ pub mod utilities;
 mod config;
 mod kernel;
 mod memop;
+mod process_array;
 mod process_binary;
 mod process_loading;
 mod process_policies;

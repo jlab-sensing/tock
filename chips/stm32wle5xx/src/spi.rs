@@ -512,7 +512,7 @@ impl<'a> spi::SpiMaster<'a> for Spi<'a> {
     }
 
     /// (TODO) Need to fix / update the baud rate calc here.
-    fn set_rate(&self, rate: u32) -> Result<u32, ErrorCode> {
+    fn set_rate(&self, _rate: u32) -> Result<u32, ErrorCode> {
         // debug! ("stm32f3 spi set rate");
         // if rate != 1_000_000 {
         //     return Err(ErrorCode::INVAL);

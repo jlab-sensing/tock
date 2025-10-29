@@ -110,10 +110,9 @@ use crate::chip_specific::clock_constants;
 use crate::clocks::hsi::HSI_FREQUENCY_MHZ;
 use crate::rcc::Rcc;
 use crate::rcc::SysClockSource;
-use crate::rcc::{PLLMDivider, PLLPDivider, PLLQDivider, PllSource};
+use crate::rcc::{PLLPDivider, PLLQDivider, PllSource};
 use crate::rcc::{DEFAULT_PLLM_VALUE, DEFAULT_PLLN_VALUE, DEFAULT_PLLP_VALUE, DEFAULT_PLLQ_VALUE};
 
-use kernel::debug;
 use kernel::utilities::cells::OptionalCell;
 use kernel::ErrorCode;
 

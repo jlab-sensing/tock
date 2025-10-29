@@ -91,7 +91,7 @@ impl<'a, U: usb_hid::UsbHid<'a, [u8; 64]>> usb_hid::Client<'a, [u8; 64]> for Usb
                         })
                     });
 
-                kernel_data.schedule_upcall(0, (0, 0, 0)).ok();
+                let _ = kernel_data.schedule_upcall(0, (0, 0, 0));
             });
         });
 
@@ -106,7 +106,7 @@ impl<'a, U: usb_hid::UsbHid<'a, [u8; 64]>> usb_hid::Client<'a, [u8; 64]> for Usb
     ) {
         self.processid.map(|id| {
             let _ = self.app.enter(id, |_app, kernel_data| {
-                kernel_data.schedule_upcall(0, (1, 0, 0)).ok();
+                let _ = kernel_data.schedule_upcall(0, (1, 0, 0));
             });
         });
 
@@ -245,16 +245,13 @@ impl<'a, U: usb_hid::UsbHid<'a, [u8; 64]>> SyscallDriver for UsbHidDriver<'a, U>
                     // a receive we return `ErrorCode::ALREADY`. If the
                     // receive fails we return an error.
                     if let Some(buf) = self.recv_buffer.take() {
-                        match self.usb.receive_buffer(buf) {
-                            Ok(()) => {}
-                            Err((err, buffer)) => {
-                                self.recv_buffer.replace(buffer);
-                                return CommandReturn::failure(err);
-                            }
+                        if let Err((err, buffer)) = self.usb.receive_buffer(buf) {
+                            self.recv_buffer.replace(buffer);
+                            return CommandReturn::failure(err);
                         }
                     } else {
                         return CommandReturn::failure(ErrorCode::ALREADY);
-                    };
+                    }
 
                     // If we were able to setup a read then next we do the
                     // transmit.

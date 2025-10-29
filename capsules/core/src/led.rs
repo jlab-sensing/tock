@@ -53,6 +53,10 @@
 //! - `3`: Toggle the on/off state of the LED.
 //!   - `data`: The index of the LED. Starts at 0.
 //!   - Return: `Ok(())` if the LED index was valid, `INVAL` otherwise.
+//! - `4`: Read the current state of the LED.
+//!   - `data`: The index of the LED. Starts at 0.
+//!   - Return: `INVAL` if the LED index was invalid, `Ok(0u32)` if the LED is
+//!   off, `Ok(1u32)` if the LED is on.
 
 use kernel::hil::led;
 use kernel::syscall::{CommandReturn, SyscallDriver};
@@ -86,13 +90,15 @@ impl<L: led::Led, const NUM_LEDS: usize> SyscallDriver for LedDriver<'_, L, NUM_
     /// ### `command_num`
     ///
     /// - `0`: Returns the number of LEDs on the board. This will always be 0 or
-    ///        greater, and therefore also allows for checking for this driver.
+    ///   greater, and therefore also allows for checking for this driver.
     /// - `1`: Turn the LED at index specified by `data` on. Returns `INVAL` if
-    ///        the LED index is not valid.
-    /// - `2`: Turn the LED at index specified by `data` off. Returns `INVAL`
-    ///        if the LED index is not valid.
+    ///   the LED index is not valid.
+    /// - `2`: Turn the LED at index specified by `data` off. Returns `INVAL` if
+    ///   the LED index is not valid.
     /// - `3`: Toggle the LED at index specified by `data` on or off. Returns
-    ///        `INVAL` if the LED index is not valid.
+    ///   `INVAL` if the LED index is not valid.
+    /// - `4`: Read the LED state at index specified by `data`. Returns `INVAL`
+    ///   if the LED index is not valid.
     fn command(&self, command_num: usize, data: usize, _: usize, _: ProcessId) -> CommandReturn {
         match command_num {
             // get number of LEDs
@@ -128,6 +134,16 @@ impl<L: led::Led, const NUM_LEDS: usize> SyscallDriver for LedDriver<'_, L, NUM_
                 } else {
                     self.leds[data].toggle();
                     CommandReturn::success()
+                }
+            }
+
+            // read
+            4 => {
+                if data >= NUM_LEDS {
+                    CommandReturn::failure(ErrorCode::INVAL) /* led out of range */
+                } else {
+                    let value = self.leds[data].read();
+                    CommandReturn::success_u32(value as u32)
                 }
             }
 
