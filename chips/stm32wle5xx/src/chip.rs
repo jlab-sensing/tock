@@ -101,7 +101,7 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
         unsafe {
             loop {
                 if let Some(interrupt) =
-                    cortexm4::nvic::next_pending_with_mask((0, 1 << (crate::nvic::RADIO_IRQ % 32)))
+                    cortexm4::nvic::next_pending_with_mask((0, 1u128 << crate::nvic::RADIO_IRQ))
                 {
                     if !self.interrupt_service.service_interrupt(interrupt) {
                         panic!("unhandled interrupt {}", interrupt);
@@ -113,7 +113,7 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
                 } else {
                     if let Some(radio_interrupt) = cortexm4::nvic::next_pending_with_mask((
                         u128::MAX,
-                        !(1 << (crate::nvic::RADIO_IRQ % 32)),
+                        !(1u128 << crate::nvic::RADIO_IRQ),
                     )) {
                         // check to confirm we masked properly
                         assert!(radio_interrupt == crate::nvic::RADIO_IRQ);
@@ -128,7 +128,7 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
     }
 
     fn has_pending_interrupts(&self) -> bool {
-        unsafe { cortexm4::nvic::has_pending_with_mask((0, 1 << (crate::nvic::RADIO_IRQ % 32))) }
+        unsafe { cortexm4::nvic::has_pending_with_mask((0, 1u128 << crate::nvic::RADIO_IRQ)) }
     }
 
     fn mpu(&self) -> &cortexm4::mpu::MPU {

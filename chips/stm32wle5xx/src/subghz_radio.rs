@@ -57,11 +57,8 @@ impl VirtualGpioReader for SubGhzRadioSignals {
         // the interrupt in the interrupt handler and perform the
         // check here to see if any other interrupts are pending.
         unsafe {
-            cortexm4::nvic::next_pending_with_mask((
-                u128::MAX,
-                !(1 << (crate::nvic::RADIO_IRQ % 32)),
-            ))
-            .is_some_and(|_| true)
+            cortexm4::nvic::next_pending_with_mask((u128::MAX, !(1 << crate::nvic::RADIO_IRQ)))
+                .is_some_and(|_| true)
         }
     }
     fn write(&self, _val: u32) {
