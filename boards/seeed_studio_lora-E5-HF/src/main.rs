@@ -22,6 +22,7 @@ use components::gpio::GpioComponent;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::hil::led::LedLow;
+use kernel::hil::time::Alarm;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::round_robin::RoundRobinSched;
@@ -66,6 +67,7 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
+
 struct SeeedStudioLoraE5Hf {
     //led: &'static capsules_core::led::LedDriver<
     //    'static,
@@ -96,7 +98,12 @@ struct SeeedStudioLoraE5Hf {
         'static,
         stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio<'static>,
     >,
-    sdi12_ents: &'static Sdi12Ents<'static, UartDevice<'static>>,
+    sdi12_ents: &'static Sdi12Ents<
+        'static,
+        UartDevice<'static>,
+        // gpio<'static>,
+        VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>, // maybe this should be an alarm instead of a timer? does not look like it requires ticks or frequency if defined as a
+    >,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -355,6 +362,7 @@ pub unsafe fn main() {
     let gpio_ports = &base_peripherals.gpio_ports;
     gpio_ports.get_port_from_port_id(PortId::B).enable_clock();
     gpio_ports.get_port_from_port_id(PortId::A).enable_clock();
+    gpio_ports.get_port_from_port_id(PortId::C).enable_clock();
 
     // Setup UART
     base_peripherals.usart1.enable_clock();
@@ -374,13 +382,13 @@ pub unsafe fn main() {
     let uart_mux_1 = components::console::UartMuxComponent::new(&base_peripherals.usart1, 115200)
         .finalize(components::uart_mux_component_static!());
 
-    // USART2: PA2=TX , PA1=RX
+    // USART2: PA2=TX , PA3=RX
     gpio_ports.get_pin(PinId::PA02).map(|pin| {
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
     });
 
-    gpio_ports.get_pin(PinId::PA01).map(|pin| {
+    gpio_ports.get_pin(PinId::PA03).map(|pin| {
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
     });
@@ -416,8 +424,6 @@ pub unsafe fn main() {
         capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
         capsules_core::virtualizers::virtual_uart::UartDevice::new(&uart_mux_2, true)
     );
-
-    // let _ = sdi12.sdi12_send_command("a!", 2);
 
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new(uart_mux_1)
@@ -519,13 +525,28 @@ pub unsafe fn main() {
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
+    let sdi12_pin = gpio_ports.get_pin(PinId::PC01).unwrap();
+    let virtual_alarm = static_init!(
+        VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+        VirtualMuxAlarm::new(mux_alarm)
+    );
+    virtual_alarm.setup();
+
     let sdi12_ents = static_init!(
         capsules_extra::sdi12_ents::Sdi12Ents<
             'static,
             capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
+            VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+            // mux_alarm,
         >,
-        capsules_extra::sdi12_ents::Sdi12Ents::new(uart_device, &mut SDI12_TX_BUF)
+        capsules_extra::sdi12_ents::Sdi12Ents::new(
+            uart_device,
+            &mut SDI12_TX_BUF,
+            sdi12_pin,
+            virtual_alarm,
+        )
     );
+    virtual_alarm.set_alarm_client(sdi12_ents);
 
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
         scheduler,

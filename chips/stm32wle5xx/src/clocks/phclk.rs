@@ -193,6 +193,9 @@ impl<'a> ClockInterface for PeripheralClock<'a> {
                 HCLK2::GPIOB => {
                     rcc.enable_gpiob_clock();
                 }
+                HCLK2::GPIOC => {
+                    rcc.enable_gpioc_clock();
+                }
                 _ => unimplemented!(),
             },
             PeripheralClockType::AHB3(ref v) => match v {

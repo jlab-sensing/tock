@@ -1,10 +1,11 @@
 use capsules_core::driver;
+use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use capsules_core::virtualizers::virtual_uart::UartDevice;
 use core::cell::Cell;
 use kernel::debug;
 use kernel::errorcode::{into_statuscode, ErrorCode};
-use kernel::hil::gpio::Output;
-use kernel::hil::time::{ConvertTicks, Frequency, Ticks, Timer};
+use kernel::hil::gpio::Pin;
+use kernel::hil::time::{Alarm, AlarmClient, ConvertTicks, Frequency, Ticks, Time, Timer};
 use kernel::hil::uart::{Client, ReceiveClient, Uart};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
@@ -38,25 +39,36 @@ pub enum State {
     SendingCommand,
     ReadingResponse,
 }
-pub struct Sdi12Ents<'a, U>
+pub struct Sdi12Ents<'a, U, A>
 where
     U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
+    A: kernel::hil::time::Alarm<'a>,
 {
     uart: &'a U,
     state: Cell<State>,
     tx_buffer: TakeCell<'static, [u8]>,
+    command_pin: &'a dyn Pin,
+    alarm: &'a A,
 }
 
-impl<'a, U> Sdi12Ents<'a, U>
+impl<'a, U, A> Sdi12Ents<'a, U, A>
 where
     U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
+    A: kernel::hil::time::Alarm<'a>,
 {
-    pub fn new(uart: &'a U, tx_buffer: &'static mut [u8]) -> Sdi12Ents<'a, U> {
+    pub fn new(
+        uart: &'a U,
+        tx_buffer: &'static mut [u8],
+        command_pin: &'a dyn Pin,
+        alarm: &'a A,
+    ) -> Sdi12Ents<'a, U, A> {
         debug!("Initializing SDI12 capsule");
         Sdi12Ents {
             uart,
             state: Cell::new(State::Idle),
             tx_buffer: TakeCell::new(tx_buffer),
+            command_pin,
+            alarm,
         }
     }
 
@@ -68,11 +80,13 @@ where
      * @return   void
      ******************************************************************************
      */
-    // pub fn sdi12_wake_sensors(&self) {
-    //     self.command_pin.clear();
-    //     let interval: T = self.ticks.ticks_from_ms(WAKE_SENSORS_INTERVAL_MS);
-    //     self.timer.oneshot(interval); // hold line low for 20ms
-    // }
+    pub fn sdi12_wake_sensors(&self) {
+        debug!("Waking SDI12 sensors");
+        self.command_pin.make_output();
+        self.command_pin.clear();
+        let interval = self.alarm.ticks_from_ms(WAKE_SENSORS_INTERVAL_MS);
+        self.alarm.set_alarm(self.alarm.now(), interval);
+    }
 
     /**
      ******************************************************************************
@@ -94,7 +108,11 @@ where
         let buffer = self.tx_buffer.take().unwrap();
         buffer[..len].copy_from_slice(&command_bytes[..len]);
         let status_result = self.uart.transmit_buffer(buffer, len);
-        debug!("Beginning SDI12 transmit: command={}", command);
+        debug!(
+            "Beginning SDI12 transmit: command={}, status_result={:?}, setting control pin high for RX mode",
+            command, status_result
+        );
+        self.command_pin.set();
         match status_result {
             Ok(()) => Ok(Sdi12Status::Sdi12Ok),
             Err(_) => Err(Sdi12Status::Sdi12Error),
@@ -110,7 +128,7 @@ where
      */
     pub fn sdi12_ack_active(&self) -> Sdi12Status {
         self.state.set(State::SendingCommand);
-        let buffer = "0!".as_bytes();
+        let buffer = "0!!!!!!!!".as_bytes();
         let len = buffer.len();
         let tx_buffer = self.tx_buffer.take().unwrap();
         tx_buffer[..len].copy_from_slice(&buffer[..len]);
@@ -123,9 +141,10 @@ where
     }
 }
 
-impl<'a, U> SyscallDriver for Sdi12Ents<'a, U>
+impl<'a, U, A> SyscallDriver for Sdi12Ents<'a, U, A>
 where
     U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
+    A: kernel::hil::time::Alarm<'a>,
 {
     fn command(
         &self,
@@ -134,7 +153,9 @@ where
         _: usize,
         processid: ProcessId,
     ) -> CommandReturn {
-        debug!("Hi Tyler!");
+        debug!("command syscall executing");
+        // /self.sdi12_wake_sensors();
+        self.command_pin.clear();
         self.sdi12_send_command("0!", 3);
         CommandReturn::success()
     }
@@ -143,5 +164,24 @@ where
         // Allocation is performed implicitly when the grant region is entered.
         //self.apps.enter(processid, |_, _| {});
         Ok(())
+    }
+}
+
+impl<'a, U, A> AlarmClient for Sdi12Ents<'a, U, A>
+where
+    A: kernel::hil::time::Alarm<'a>,
+    U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
+{
+    fn alarm(&self) {
+        // match self.state.get() {
+        //     State::WakingSensors => {
+        //         self.command_pin.clear();
+        //         self.state.set(State::Idle);
+        //     }
+        //     _ => {}
+        // }
+        debug!("SDI12 Alarm fired, sending command");
+        self.sdi12_send_command("0!", 3);
+        self.state.set(State::Idle);
     }
 }
