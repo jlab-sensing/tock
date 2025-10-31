@@ -6,6 +6,7 @@ use kernel::debug;
 use kernel::errorcode::{into_statuscode, ErrorCode};
 use kernel::hil::gpio::Pin;
 use kernel::hil::time::{Alarm, AlarmClient, ConvertTicks, Frequency, Ticks, Time, Timer};
+use kernel::hil::uart::TransmitClient;
 use kernel::hil::uart::{Client, ReceiveClient, Uart};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
@@ -183,5 +184,24 @@ where
         debug!("SDI12 Alarm fired, sending command");
         self.sdi12_send_command("0!", 3);
         self.state.set(State::Idle);
+    }
+}
+
+impl<'a, U, A> TransmitClient for Sdi12Ents<'a, U, A>
+where
+    A: kernel::hil::time::Alarm<'a>,
+    U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
+{
+    fn transmitted_buffer(
+        &self,
+        buffer: &'static mut [u8],
+        _length: usize,
+        _status: Result<(), ErrorCode>,
+    ) {
+        debug!(
+            "SDI12 Transmit complete, returning buffer: STATUS={:?}",
+            _status
+        );
+        self.tx_buffer.replace(buffer);
     }
 }
