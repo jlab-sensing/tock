@@ -435,7 +435,7 @@ impl<'a> Usart<'a> {
     }
 
     pub fn handle_interrupt(&self) {
-        if self.registers.isr.is_set(ISR::TXE) {
+        if self.registers.isr.is_set(ISR::TC) {
             self.disable_transmit_interrupt();
 
             // ignore IRQ if not transmitting

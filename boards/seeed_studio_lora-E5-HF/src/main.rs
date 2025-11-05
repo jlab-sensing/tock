@@ -24,6 +24,7 @@ use kernel::component::Component;
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Alarm;
 use kernel::hil::time::Counter;
+use kernel::hil::uart::Transmit;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::{create_capability, debug, static_init};
@@ -424,6 +425,9 @@ pub unsafe fn main() {
         capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
         capsules_core::virtualizers::virtual_uart::UartDevice::new(&uart_mux_2, true)
     );
+    uart_device.setup();
+
+    // let _ = sdi12.sdi12_send_command("a!", 2);
 
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new(uart_mux_1)
@@ -547,6 +551,7 @@ pub unsafe fn main() {
         )
     );
     virtual_alarm.set_alarm_client(sdi12_ents);
+    uart_device.set_transmit_client(sdi12_ents);
 
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
         scheduler,

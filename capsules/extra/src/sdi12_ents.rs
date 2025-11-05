@@ -104,6 +104,8 @@ where
     ) -> Result<Sdi12Status, Sdi12Status> {
         self.state.set(State::SendingCommand);
 
+        self.command_pin.clear(); // set control pin low for TX mode
+
         let command_bytes = command.as_bytes();
         let len = size.min(command_bytes.len()); // prevent overflow
         let buffer = self.tx_buffer.take().unwrap();
@@ -113,33 +115,32 @@ where
             "Beginning SDI12 transmit: command={}, status_result={:?}, setting control pin high for RX mode",
             command, status_result
         );
-        self.command_pin.set();
         match status_result {
             Ok(()) => Ok(Sdi12Status::Sdi12Ok),
             Err(_) => Err(Sdi12Status::Sdi12Error),
         }
     }
 
-    /**
-     ******************************************************************************
-     * @brief    Acknowledge Active
-     *
-     * @return   Sdi12Status
-     ******************************************************************************
-     */
-    pub fn sdi12_ack_active(&self) -> Sdi12Status {
-        self.state.set(State::SendingCommand);
-        let buffer = "0!!!!!!!!".as_bytes();
-        let len = buffer.len();
-        let tx_buffer = self.tx_buffer.take().unwrap();
-        tx_buffer[..len].copy_from_slice(&buffer[..len]);
-        let status_result = self.uart.transmit_buffer(&mut tx_buffer[..len], len);
-        debug!("Sending SDI12 Acknowledge Active to Address 0");
-        match status_result {
-            Ok(()) => Sdi12Status::Sdi12Ok,
-            Err(_) => Sdi12Status::Sdi12Error,
-        }
-    }
+    // /**
+    //  ******************************************************************************
+    //  * @brief    Acknowledge Active
+    //  *
+    //  * @return   Sdi12Status
+    //  ******************************************************************************
+    //  */
+    // pub fn sdi12_ack_active(&self) -> Sdi12Status {
+    //     self.state.set(State::SendingCommand);
+    //     let buffer = "0!!!!!!!!".as_bytes();
+    //     let len = buffer.len();
+    //     let tx_buffer = self.tx_buffer.take().unwrap();
+    //     tx_buffer[..len].copy_from_slice(&buffer[..len]);
+    //     let status_result = self.uart.transmit_buffer(&mut tx_buffer[..len], len);
+    //     debug!("Sending SDI12 Acknowledge Active to Address 0");
+    //     match status_result {
+    //         Ok(()) => Sdi12Status::Sdi12Ok,
+    //         Err(_) => Sdi12Status::Sdi12Error,
+    //     }
+    // }
 }
 
 impl<'a, U, A> SyscallDriver for Sdi12Ents<'a, U, A>
@@ -155,9 +156,7 @@ where
         processid: ProcessId,
     ) -> CommandReturn {
         debug!("command syscall executing");
-        // /self.sdi12_wake_sensors();
-        self.command_pin.clear();
-        self.sdi12_send_command("0!", 3);
+        self.sdi12_wake_sensors();
         CommandReturn::success()
     }
 
@@ -183,7 +182,7 @@ where
         // }
         debug!("SDI12 Alarm fired, sending command");
         self.sdi12_send_command("0!", 3);
-        self.state.set(State::Idle);
+        self.state.set(State::SendingCommand);
     }
 }
 
@@ -198,10 +197,9 @@ where
         _length: usize,
         _status: Result<(), ErrorCode>,
     ) {
-        debug!(
-            "SDI12 Transmit complete, returning buffer: STATUS={:?}",
-            _status
-        );
+        debug!("SDI12 Transmit complete");
+        _status.unwrap();
         self.tx_buffer.replace(buffer);
+        self.command_pin.set(); // set control pin high for RX mode
     }
 }
