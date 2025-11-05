@@ -15,7 +15,7 @@ use kernel::ProcessId;
 const REQUEST_MEASURMENT_RESPONSE_SIZE: usize = 7;
 const MEASURMENT_RESPONSE_SIZE: usize = 30;
 const SERVICE_REQUEST_SIZE: usize = 3;
-const WAKE_SENSORS_INTERVAL_MS: u32 = 20;
+const WAKE_SENSORS_INTERVAL_MS: u32 = 9;
 
 pub const DRIVER_NUM: usize = driver::NUM::Sdi12Ents as usize;
 
@@ -83,8 +83,21 @@ where
      */
     pub fn sdi12_wake_sensors(&self) {
         debug!("Waking SDI12 sensors");
-        self.command_pin.make_output();
-        self.command_pin.clear();
+        self.command_pin.make_output(); // set control pin as output
+
+        self.command_pin.clear(); // set control pin low for TX mode to wake sensors
+
+        // let buffer = self.tx_buffer.take().unwrap();
+        // let command = "\x00"; // send break
+        // let command_bytes = command.as_bytes();
+        // let len = command.len();
+        // buffer[..len].copy_from_slice(&command_bytes[..len]);
+        // let status_result = self.uart.transmit_buffer(buffer, len);
+        // match status_result {
+        //     Ok(()) => debug!("Break sent successfully"),
+        //     Err(_) => debug!("Error sending break"),
+        // }
+
         let interval = self.alarm.ticks_from_ms(WAKE_SENSORS_INTERVAL_MS);
         self.alarm.set_alarm(self.alarm.now(), interval);
     }
@@ -181,7 +194,7 @@ where
         //     _ => {}
         // }
         debug!("SDI12 Alarm fired, sending command");
-        self.sdi12_send_command("0!", 3);
+        self.sdi12_send_command("a!", 2);
         self.state.set(State::SendingCommand);
     }
 }
