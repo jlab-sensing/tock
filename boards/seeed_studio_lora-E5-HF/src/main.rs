@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-//! Board file for STM32F429I Discovery development board
+//! Board file for STM32WLE5JC Seeed Studio LoRa E5 HF mini development board.
 //!
-//! - <https://www.st.com/en/evaluation-tools/32f429idiscovery.html>
+//! - <https://wiki.seeedstudio.com/LoRa_E5_mini/>
 
 #![no_std]
 // Disable this attribute when documenting, as a workaround for
@@ -68,12 +68,6 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
 struct SeeedStudioLoraE5Hf {
-    //led: &'static capsules_core::led::LedDriver<
-    //    'static,
-    //    LedHigh<'static, stm32wle5jc::gpio::Pin<'static>>,
-    //    1,
-    //>,
-    // gpio: &'static capsules_core::gpio::GPIO<'static, stm32f429zi::gpio::Pin<'static>>,
     scheduler: &'static RoundRobinSched<'static>,
     systick: cortexm4::systick::SysTick,
     console: &'static capsules_core::console::Console<'static>,
@@ -111,8 +105,6 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Hf {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             LORA_SPI_DRIVER_NUM => f(Some(self.lora_spi_controller)),
             LORA_GPIO_DRIVER_NUM => f(Some(self.lora_gpio)),
-            // kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
-            // capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
             _ => f(None),
         }
     }
@@ -156,128 +148,6 @@ impl
         &()
     }
 }
-
-/// Helper function called during bring-up that configures DMA.
-// ENTS TODO: Is this needed fo W series? Unused currently.
-/*
-unsafe fn setup_dma(
-    dma: &stm32f429zi::dma::Dma2,
-    dma_streams: &'static [stm32f429zi::dma::Stream<'static, stm32f429zi::dma::Dma2>; 8],
-    usart1: &'static stm32f429zi::usart::Usart<stm32f429zi::dma::Dma2>,
-) {
-    use stm32f429zi::dma::Dma2Peripheral;
-    use stm32f429zi::usart;
-
-    dma.enable_clock();
-
-    let usart1_tx_stream = &dma_streams[Dma2Peripheral::USART1_TX.get_stream_idx()];
-    let usart1_rx_stream = &dma_streams[Dma2Peripheral::USART1_RX.get_stream_idx()];
-
-    usart1.set_dma(
-        usart::TxDMA(usart1_tx_stream),
-        usart::RxDMA(usart1_rx_stream),
-    );
-
-    usart1_tx_stream.set_client(usart1);
-    usart1_rx_stream.set_client(usart1);
-
-    usart1_tx_stream.setup(Dma2Peripheral::USART1_TX);
-    usart1_rx_stream.setup(Dma2Peripheral::USART1_RX);
-
-    cortexm4::nvic::Nvic::new(Dma2Peripheral::USART1_TX.get_stream_irqn()).enable();
-    cortexm4::nvic::Nvic::new(Dma2Peripheral::USART1_RX.get_stream_irqn()).enable();
-} */
-
-/*
-/// Helper function called during bring-up that configures multiplexed I/O.
-unsafe fn set_pin_primary_functions(
-    syscfg: &stm32f429zi::syscfg::Syscfg,
-    gpio_ports: &'static stm32f429zi::gpio::GpioPorts<'static>,
-) {
-    use kernel::hil::gpio::Configure;
-
-    syscfg.enable_clock();
-
-    gpio_ports.get_port_from_port_id(PortId::G).enable_clock();
-
-    // User LD4 (red) is connected to PG14. Configure PG14 as `debug_gpio!(0, ...)`
-    gpio_ports.get_pin(PinId::PG14).map(|pin| {
-        pin.make_output();
-
-        // Configure kernel debug gpios as early as possible
-        kernel::debug::assign_gpios(Some(pin), None, None);
-    });
-
-    gpio_ports.get_port_from_port_id(PortId::A).enable_clock();
-
-    // Configure USART1 on Pins PA09 and PA10.
-    // USART1 is connected to ST-LINK virtual COM port on Rev.1 of the Stm32f429i Discovery board
-    gpio_ports.get_pin(PinId::PA09).map(|pin| {
-        pin.set_mode(Mode::AlternateFunctionMode);
-        // AF7 is USART1_TX
-        pin.set_alternate_function(AlternateFunction::AF7);
-    });
-    gpio_ports.get_pin(PinId::PA10).map(|pin| {
-        pin.set_mode(Mode::AlternateFunctionMode);
-        // AF7 is USART1_RX
-        pin.set_alternate_function(AlternateFunction::AF7);
-    });
-
-    // User button B1 is connected on pa00
-    gpio_ports.get_pin(PinId::PA00).map(|pin| {
-        // By default, upon reset, the pin is in input mode, with no internal
-        // pull-up, no internal pull-down (i.e., floating).
-        //
-        // Only set the mapping between EXTI line and the Pin and let capsule do
-        // the rest.
-        pin.enable_interrupt();
-    });
-    // EXTI0 interrupts is delivered at IRQn 6 (EXTI0)
-    cortexm4::nvic::Nvic::new(stm32f429zi::nvic::EXTI0).enable(); // TODO check if this is still necessary!
-
-    // Enable clocks for GPIO Ports
-    // Disable some of them if you don't need some of the GPIOs
-    // Ports A, and B are already enabled
-    //           A: already enabled
-    gpio_ports.get_port_from_port_id(PortId::B).enable_clock();
-    gpio_ports.get_port_from_port_id(PortId::C).enable_clock();
-    gpio_ports.get_port_from_port_id(PortId::D).enable_clock();
-    gpio_ports.get_port_from_port_id(PortId::E).enable_clock();
-    gpio_ports.get_port_from_port_id(PortId::F).enable_clock();
-    //           G: already enabled
-    gpio_ports.get_port_from_port_id(PortId::H).enable_clock();
-
-    // Arduino A0
-    gpio_ports.get_pin(PinId::PA03).map(|pin| {
-        pin.set_mode(stm32f429zi::gpio::Mode::AnalogMode);
-    });
-
-    // Arduino A1
-    gpio_ports.get_pin(PinId::PC00).map(|pin| {
-        pin.set_mode(stm32f429zi::gpio::Mode::AnalogMode);
-    });
-
-    // Arduino A2
-    gpio_ports.get_pin(PinId::PC03).map(|pin| {
-        pin.set_mode(stm32f429zi::gpio::Mode::AnalogMode);
-    });
-
-    // Arduino A3
-    gpio_ports.get_pin(PinId::PF03).map(|pin| {
-        pin.set_mode(stm32f429zi::gpio::Mode::AnalogMode);
-    });
-
-    // Arduino A4
-    gpio_ports.get_pin(PinId::PF05).map(|pin| {
-        pin.set_mode(stm32f429zi::gpio::Mode::AnalogMode);
-    });
-
-    // Arduino A5
-    gpio_ports.get_pin(PinId::PF10).map(|pin| {
-        pin.set_mode(stm32f429zi::gpio::Mode::AnalogMode);
-    });
-}
-*/
 
 /// Helper function for miscellaneous peripheral functions
 unsafe fn setup_peripherals(tim2: &stm32wle5jc::tim2::Tim2, subghz_spi: &stm32wle5jc::spi::Spi) {
@@ -370,7 +240,9 @@ pub unsafe fn main() {
     gpio_ports.get_port_from_port_id(PortId::B).enable_clock();
     gpio_ports.get_port_from_port_id(PortId::A).enable_clock();
 
-    // Setup UART
+    //--------------------------------------------------------------------
+    // Usart
+    //--------------------------------------------------------------------
     base_peripherals.usart1.enable_clock();
     // base_peripherals.usart2.enable_clock();
 
@@ -390,8 +262,9 @@ pub unsafe fn main() {
 
     (*addr_of_mut!(io::WRITER)).set_initialized();
 
-    // ALARM
-
+    //--------------------------------------------------------------------
+    // Alarm
+    //--------------------------------------------------------------------
     let tim2 = &base_peripherals.tim2;
     let mux_alarm = components::alarm::AlarmMuxComponent::new(tim2).finalize(
         components::alarm_mux_component_static!(stm32wle5jc::tim2::Tim2),
@@ -404,7 +277,9 @@ pub unsafe fn main() {
     )
     .finalize(components::alarm_component_static!(stm32wle5jc::tim2::Tim2));
 
-    // Setup the console.
+    //--------------------------------------------------------------------
+    // Console.
+    //--------------------------------------------------------------------
     let console = components::console::ConsoleComponent::new(
         board_kernel,
         capsules_core::console::DRIVER_NUM,
@@ -425,7 +300,9 @@ pub unsafe fn main() {
         .finalize(components::process_printer_text_component_static!());
     PROCESS_PRINTER = Some(process_printer);
 
+    //--------------------------------------------------------------------
     // LED
+    //--------------------------------------------------------------------
     let led = components::led::LedsComponent::new().finalize(components::led_component_static!(
         LedLow<'static, stm32wle5jc::gpio::Pin>,
         LedLow::new(gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PB05).unwrap()),
@@ -456,13 +333,11 @@ pub unsafe fn main() {
         stm32wle5jc::spi::Spi<'static>
     ));
 
+    //--------------------------------------------------------------------
+    // LoRa
+    //--------------------------------------------------------------------
     // reset lora module
     base_peripherals.clocks.reset_subghzradio();
-
-    // let lora_interrupt_base = static_init!(
-    //     stm32wle5jc::subghz_radio::SubGhzRadioSignals,
-    //     stm32wle5jc::subghz_radio::SubGhzRadioSignals::new()
-    // );
 
     let lora_interrupt_pin = static_init!(
         stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio,
@@ -493,7 +368,30 @@ pub unsafe fn main() {
         stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio
     ));
 
+    //--------------------------------------------------------------------
+    // I2C2
+    //--------------------------------------------------------------------
+    gpio_ports.get_pin(PinId::PA15).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
+    });
+
+    gpio_ports.get_pin(PinId::PB15).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
+    });
+
+    base_peripherals.i2c2.enable_clock();
+    base_peripherals
+        .i2c2
+        .set_speed(stm32wle5jc::i2c::I2CSpeed::Speed400k);
+
+    // Uncomment to run I2C scan test
+    // test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
+
+    //--------------------------------------------------------------------
     // PROCESS CONSOLE
+    //--------------------------------------------------------------------
     let process_console = components::process_console::ProcessConsoleComponent::new(
         board_kernel,
         uart_mux,
@@ -558,26 +456,6 @@ pub unsafe fn main() {
     /*components::test::multi_alarm_test::MultiAlarmTestComponent::new(mux_alarm)
     .finalize(components::multi_alarm_test_component_buf!(stm32f429zi::tim2::Tim2))
     .run();*/
-
-    // I2C2
-
-    gpio_ports.get_pin(PinId::PA15).map(|pin| {
-        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
-        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
-    });
-
-    gpio_ports.get_pin(PinId::PB15).map(|pin| {
-        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
-        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
-    });
-
-    base_peripherals.i2c2.enable_clock();
-    base_peripherals
-        .i2c2
-        .set_speed(stm32wle5jc::i2c::I2CSpeed::Speed400k);
-
-    // Uncomment to run I2C scan test
-    test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
 
     board_kernel.kernel_loop(
         &seeed_studio_lora_e5_hf,
