@@ -313,9 +313,19 @@ unsafe fn create_peripherals() -> &'static mut Stm32wle5jcDefaultPeripherals<'st
         stm32wle5jc::clocks::Clocks::new(rcc)
     );
 
+    let syscfg = static_init!(
+        stm32wle5jc::syscfg::Syscfg,
+        stm32wle5jc::syscfg::Syscfg::new()
+    );
+
+    let exti = static_init!(
+        stm32wle5jc::exti::Exti,
+        stm32wle5jc::exti::Exti::new(syscfg)
+    );
+
     let peripherals = static_init!(
         Stm32wle5jcDefaultPeripherals,
-        Stm32wle5jcDefaultPeripherals::new(clocks)
+        Stm32wle5jcDefaultPeripherals::new(clocks, exti, syscfg)
     );
 
     peripherals
