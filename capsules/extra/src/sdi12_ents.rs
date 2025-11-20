@@ -17,6 +17,8 @@ const MEASURMENT_RESPONSE_SIZE: usize = 30;
 const SERVICE_REQUEST_SIZE: usize = 3;
 const WAKE_SENSORS_INTERVAL_MS: u32 = 9;
 
+use kernel::hil::sdi12;
+
 pub const DRIVER_NUM: usize = driver::NUM::Sdi12Ents as usize;
 
 pub enum Sdi12Status {
@@ -40,36 +42,25 @@ pub enum State {
     SendingCommand,
     ReadingResponse,
 }
-pub struct Sdi12Ents<'a, U, A>
-where
-    U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
-    A: kernel::hil::time::Alarm<'a>,
-{
-    uart: &'a U,
+pub struct Sdi12Ents<'a, S: sdi12::Transmit<'a>> {
     state: Cell<State>,
     tx_buffer: TakeCell<'static, [u8]>,
     command_pin: &'a dyn Pin,
-    alarm: &'a A,
+    sdi12: &'a S,
 }
 
-impl<'a, U, A> Sdi12Ents<'a, U, A>
-where
-    U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
-    A: kernel::hil::time::Alarm<'a>,
-{
+impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
     pub fn new(
-        uart: &'a U,
         tx_buffer: &'static mut [u8],
         command_pin: &'a dyn Pin,
-        alarm: &'a A,
-    ) -> Sdi12Ents<'a, U, A> {
+        sdi12: &'a S,
+    ) -> Sdi12Ents<'a, S> {
         debug!("Initializing SDI12 capsule");
         Sdi12Ents {
-            uart,
             state: Cell::new(State::Idle),
             tx_buffer: TakeCell::new(tx_buffer),
             command_pin,
-            alarm,
+            sdi12,
         }
     }
 
@@ -86,6 +77,8 @@ where
         self.command_pin.make_output(); // set control pin as output
 
         self.command_pin.clear(); // set control pin low for TX mode to wake sensors
+
+        // Hold USART pin high.
 
         // let buffer = self.tx_buffer.take().unwrap();
         // let command = "\x00"; // send break

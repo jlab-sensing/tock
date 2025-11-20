@@ -536,18 +536,28 @@ pub unsafe fn main() {
     );
     virtual_alarm.setup();
 
-    let sdi12_ents = static_init!(
+    let sdi12_usart_pin = gpio_ports.get_pin(PinId::PA02).unwrap();
+
+    let sdi12_base = static_init!(
+        stm32wle5jc::sdi12::Sdi12<
+            'static,
+            stm32wle5jc::usart::Usart<'static>,
+            VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+        >,
+        stm32wle5jc::sdi12::Sdi12::new(&base_peripherals.usart2, sdi12_usart_pin, virtual_alarm,)
+    );
+
+    let sdi12_driver = static_init!(
         capsules_extra::sdi12_ents::Sdi12Ents<
             'static,
-            capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
-            VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
-            // mux_alarm,
+            stm32wle5jc::sdi12::Sdi12<
+                'static,
+                stm32wle5jc::usart::Usart<'static>,
+                VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
         >,
         capsules_extra::sdi12_ents::Sdi12Ents::new(
-            uart_device,
+            sdi12_base,
             &mut SDI12_TX_BUF,
-            sdi12_pin,
-            virtual_alarm,
         )
     );
     virtual_alarm.set_alarm_client(sdi12_ents);
