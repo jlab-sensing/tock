@@ -31,6 +31,7 @@ pub mod pwm;
 pub mod radio;
 pub mod rng;
 pub mod screen;
+pub mod sdi12;
 pub mod sensors;
 pub mod servo;
 pub mod spi;
