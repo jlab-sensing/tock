@@ -14,14 +14,14 @@
 
 use core::ptr::addr_of_mut;
 
-use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use capsules_core::i2c_master::I2CMasterDriver;
+use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use kernel::capabilities;
 use kernel::component::Component;
+use kernel::hil::gpio::Output;
+use kernel::hil::i2c::I2CMaster;
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
-use kernel::hil::i2c::I2CMaster;
-use kernel::hil::gpio::Output;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
@@ -29,9 +29,9 @@ use kernel::{create_capability, debug, static_init};
 use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
 use stm32wle5jc::clocks::msi::MSI_FREQUENCY_MHZ;
 use stm32wle5jc::gpio::{PinId, PortId};
+use stm32wle5jc::i2c::I2C;
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
-use stm32wle5jc::i2c::I2C;
 
 /// Support routines for debugging I/O.
 pub mod io;
@@ -390,9 +390,7 @@ pub unsafe fn main() {
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
     });
 
-
-    let memory_allocation_capability =
-        create_capability!(capabilities::MemoryAllocationCapability);
+    let memory_allocation_capability = create_capability!(capabilities::MemoryAllocationCapability);
 
     let i2c_master_buffer = static_init!(
         [u8; capsules_core::i2c_master::BUFFER_LENGTH],
@@ -410,11 +408,11 @@ pub unsafe fn main() {
             ),
         )
     );
-    
+
     base_peripherals.i2c2.enable_clock();
     base_peripherals
         .i2c2
-        .set_speed(stm32wle5jc::i2c::I2CSpeed::Speed400k); 
+        .set_speed(stm32wle5jc::i2c::I2CSpeed::Speed400k);
 
     i2c2.set_master_client(i2c_master);
     i2c2.enable();
