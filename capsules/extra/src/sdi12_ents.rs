@@ -72,28 +72,28 @@ impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
      * @return   void
      ******************************************************************************
      */
-    pub fn sdi12_wake_sensors(&self) {
-        debug!("Waking SDI12 sensors");
-        self.command_pin.make_output(); // set control pin as output
+    // pub fn sdi12_wake_sensors(&self) {
+    //     debug!("Waking SDI12 sensors");
+    //     self.command_pin.make_output(); // set control pin as output
 
-        self.command_pin.clear(); // set control pin low for TX mode to wake sensors
+    //     self.command_pin.clear(); // set control pin low for TX mode to wake sensors
 
-        // Hold USART pin high.
+    //     // Hold USART pin high.
 
-        // let buffer = self.tx_buffer.take().unwrap();
-        // let command = "\x00"; // send break
-        // let command_bytes = command.as_bytes();
-        // let len = command.len();
-        // buffer[..len].copy_from_slice(&command_bytes[..len]);
-        // let status_result = self.uart.transmit_buffer(buffer, len);
-        // match status_result {
-        //     Ok(()) => debug!("Break sent successfully"),
-        //     Err(_) => debug!("Error sending break"),
-        // }
+    //     // let buffer = self.tx_buffer.take().unwrap();
+    //     // let command = "\x00"; // send break
+    //     // let command_bytes = command.as_bytes();
+    //     // let len = command.len();
+    //     // buffer[..len].copy_from_slice(&command_bytes[..len]);
+    //     // let status_result = self.uart.transmit_buffer(buffer, len);
+    //     // match status_result {
+    //     //     Ok(()) => debug!("Break sent successfully"),
+    //     //     Err(_) => debug!("Error sending break"),
+    //     // }
 
-        let interval = self.alarm.ticks_from_ms(WAKE_SENSORS_INTERVAL_MS);
-        self.alarm.set_alarm(self.alarm.now(), interval);
-    }
+    //     let interval = self.alarm.ticks_from_ms(WAKE_SENSORS_INTERVAL_MS);
+    //     self.alarm.set_alarm(self.alarm.now(), interval);
+    // }
 
     /**
      ******************************************************************************
@@ -116,15 +116,26 @@ impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
         let len = size.min(command_bytes.len()); // prevent overflow
         let buffer = self.tx_buffer.take().unwrap();
         buffer[..len].copy_from_slice(&command_bytes[..len]);
-        let status_result = self.uart.transmit_buffer(buffer, len);
-        debug!(
-            "Beginning SDI12 transmit: command={}, status_result={:?}, setting control pin high for RX mode",
-            command, status_result
-        );
+
+        let status_result = self.sdi12.transmit(buffer, size);
         match status_result {
             Ok(()) => Ok(Sdi12Status::Sdi12Ok),
             Err(_) => Err(Sdi12Status::Sdi12Error),
         }
+
+        // let command_bytes = command.as_bytes();
+        // let len = size.min(command_bytes.len()); // prevent overflow
+        // let buffer = self.tx_buffer.take().unwrap();
+        // buffer[..len].copy_from_slice(&command_bytes[..len]);
+        // let status_result = self.uart.transmit_buffer(buffer, len);
+        // debug!(
+        //     "Beginning SDI12 transmit: command={}, status_result={:?}, setting control pin high for RX mode",
+        //     command, status_result
+        // );
+        // match status_result {
+        //     Ok(()) => Ok(Sdi12Status::Sdi12Ok),
+        //     Err(_) => Err(Sdi12Status::Sdi12Error),
+        // }
     }
 
     // /**
@@ -149,10 +160,9 @@ impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
     // }
 }
 
-impl<'a, U, A> SyscallDriver for Sdi12Ents<'a, U, A>
+impl<'a, S> SyscallDriver for Sdi12Ents<'a, S>
 where
-    U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
-    A: kernel::hil::time::Alarm<'a>,
+    S: sdi12::Transmit<'a>,
 {
     fn command(
         &self,
@@ -162,7 +172,7 @@ where
         processid: ProcessId,
     ) -> CommandReturn {
         debug!("command syscall executing");
-        self.sdi12_wake_sensors();
+        let _ = self.sdi12_send_command("a!", 2);
         CommandReturn::success()
     }
 
@@ -173,39 +183,39 @@ where
     }
 }
 
-impl<'a, U, A> AlarmClient for Sdi12Ents<'a, U, A>
-where
-    A: kernel::hil::time::Alarm<'a>,
-    U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
-{
-    fn alarm(&self) {
-        // match self.state.get() {
-        //     State::WakingSensors => {
-        //         self.command_pin.clear();
-        //         self.state.set(State::Idle);
-        //     }
-        //     _ => {}
-        // }
-        debug!("SDI12 Alarm fired, sending command");
-        self.sdi12_send_command("a!", 2);
-        self.state.set(State::SendingCommand);
-    }
-}
+// impl<'a, U, A> AlarmClient for Sdi12Ents<'a, U, A>
+// where
+//     A: kernel::hil::time::Alarm<'a>,
+//     U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
+// {
+//     fn alarm(&self) {
+//         // match self.state.get() {
+//         //     State::WakingSensors => {
+//         //         self.command_pin.clear();
+//         //         self.state.set(State::Idle);
+//         //     }
+//         //     _ => {}
+//         // }
+//         debug!("SDI12 Alarm fired, sending command");
+//         self.sdi12_send_command("a!", 2);
+//         self.state.set(State::SendingCommand);
+//     }
+// }
 
-impl<'a, U, A> TransmitClient for Sdi12Ents<'a, U, A>
-where
-    A: kernel::hil::time::Alarm<'a>,
-    U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
-{
-    fn transmitted_buffer(
-        &self,
-        buffer: &'static mut [u8],
-        _length: usize,
-        _status: Result<(), ErrorCode>,
-    ) {
-        debug!("SDI12 Transmit complete");
-        _status.unwrap();
-        self.tx_buffer.replace(buffer);
-        self.command_pin.set(); // set control pin high for RX mode
-    }
-}
+// impl<'a, U, A> TransmitClient for Sdi12Ents<'a, U, A>
+// where
+//     A: kernel::hil::time::Alarm<'a>,
+//     U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
+// {
+//     fn transmitted_buffer(
+//         &self,
+//         buffer: &'static mut [u8],
+//         _length: usize,
+//         _status: Result<(), ErrorCode>,
+//     ) {
+//         debug!("SDI12 Transmit complete");
+//         _status.unwrap();
+//         self.tx_buffer.replace(buffer);
+//         self.command_pin.set(); // set control pin high for RX mode
+//     }
+// }
