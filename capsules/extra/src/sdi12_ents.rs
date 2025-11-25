@@ -116,7 +116,7 @@ impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
         let len = size.min(command_bytes.len()); // prevent overflow
         let buffer = self.tx_buffer.take().unwrap();
         buffer[..len].copy_from_slice(&command_bytes[..len]);
-
+        debug!("Beginning capsule call of SDI12 driver");
         let status_result = self.sdi12.transmit(buffer, size);
         match status_result {
             Ok(()) => Ok(Sdi12Status::Sdi12Ok),
@@ -173,6 +173,7 @@ where
     ) -> CommandReturn {
         debug!("command syscall executing");
         let _ = self.sdi12_send_command("a!", 2);
+        self.command_pin.set(); // set control pin high for RX mode
         CommandReturn::success()
     }
 

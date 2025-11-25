@@ -101,9 +101,11 @@ struct SeeedStudioLoraE5Hf {
     >,
     sdi12_ents: &'static Sdi12Ents<
         'static,
-        UartDevice<'static>,
-        // gpio<'static>,
-        VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>, // maybe this should be an alarm instead of a timer? does not look like it requires ticks or frequency if defined as a
+        stm32wle5jc::sdi12::Sdi12<
+            'static,
+            stm32wle5jc::usart::Usart<'static>,
+            VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+        >,
     >,
 }
 
@@ -427,8 +429,6 @@ pub unsafe fn main() {
     );
     uart_device.setup();
 
-    // let _ = sdi12.sdi12_send_command("a!", 2);
-
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new(uart_mux_1)
         .finalize(components::debug_writer_component_static!());
@@ -529,7 +529,7 @@ pub unsafe fn main() {
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
-    let sdi12_pin = gpio_ports.get_pin(PinId::PC01).unwrap();
+    let sdi12_command_pin = gpio_ports.get_pin(PinId::PC01).unwrap();
     let virtual_alarm = static_init!(
         VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
         VirtualMuxAlarm::new(mux_alarm)
@@ -538,7 +538,7 @@ pub unsafe fn main() {
 
     let sdi12_usart_pin = gpio_ports.get_pin(PinId::PA02).unwrap();
 
-    let sdi12_base = static_init!(
+    let sdi12_driver = static_init!(
         stm32wle5jc::sdi12::Sdi12<
             'static,
             stm32wle5jc::usart::Usart<'static>,
@@ -546,22 +546,24 @@ pub unsafe fn main() {
         >,
         stm32wle5jc::sdi12::Sdi12::new(&base_peripherals.usart2, sdi12_usart_pin, virtual_alarm,)
     );
+    virtual_alarm.set_alarm_client(sdi12_driver);
+    uart_device.set_transmit_client(sdi12_driver);
 
-    let sdi12_driver = static_init!(
-        capsules_extra::sdi12_ents::Sdi12Ents<
+    let sdi12_ents = static_init!(
+        Sdi12Ents<
             'static,
             stm32wle5jc::sdi12::Sdi12<
                 'static,
                 stm32wle5jc::usart::Usart<'static>,
                 VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+            >,
         >,
         capsules_extra::sdi12_ents::Sdi12Ents::new(
-            sdi12_base,
             &mut SDI12_TX_BUF,
-        )
+            sdi12_command_pin,
+            sdi12_driver
+        ),
     );
-    virtual_alarm.set_alarm_client(sdi12_ents);
-    uart_device.set_transmit_client(sdi12_ents);
 
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
         scheduler,

@@ -13,8 +13,7 @@ const MARKIING_INTERVAL_MS: u32 = 9;
 use crate::gpio::{AlternateFunction, Mode};
 
 enum Sdi12State {
-    TxBreak(),
-    TxMarking(),
+    TxBreak(usize, &'static mut [u8]),
     Tx(usize, &'static mut [u8]),
     Idle,
 }
@@ -48,19 +47,22 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> sdi12::Transmit<'a> for Sdi12<'a, U, A> {
         // We unwrap here because this is undefined if the state
         // is None (e.g. should only ever be mapped).
         let state = self.state.take().unwrap();
-
+        kernel::debug!("SDI12: Transmit requested");
         match state {
             Sdi12State::Idle => {
-                self.state.replace(Sdi12State::TxBreak());
+                kernel::debug!("SDI12: Moving to TxBreak state");
+                self.state.replace(Sdi12State::TxBreak(len, data));
             }
             Sdi12State::Tx(enum_len, enum_data) => {
                 // Already transmitting.
                 self.state.replace(Sdi12State::Tx(enum_len, enum_data));
                 return Err((ErrorCode::BUSY, data));
             }
-            Sdi12State::TxBreak() | Sdi12State::TxMarking() => {
+            Sdi12State::TxBreak(stored_len, stored_data) => {
                 // In a pre-transmitting state
-                self.state.replace(state);
+                // Put the existing TxBreak state back and return the incoming buffer
+                self.state
+                    .replace(Sdi12State::TxBreak(stored_len, stored_data));
                 return Err((ErrorCode::BUSY, data));
             }
         }
@@ -93,25 +95,24 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> AlarmClient for Sdi12<'a, U, A> {
                 // Should not happen.
                 unreachable!("SDI12 Alarm fired in Idle state.");
             }
-            Sdi12State::TxBreak() => {
+            Sdi12State::TxBreak(len, data) => {
                 // Time to send marking interval.
-                self.state.replace(Sdi12State::TxMarking());
+                kernel::debug!("SDI12: Sending breaking signal");
+                // let mut data: [u8; 2] = *b"0!"; // send break
+                self.state.replace(Sdi12State::Tx(len, data)); // placeholder length and data
+                self.uart_pin.make_output();
+                self.uart_pin.clear();
+
                 let interval = self.alarm.ticks_from_ms(MARKIING_INTERVAL_MS);
                 self.alarm.set_alarm(self.alarm.now(), interval);
             }
-            Sdi12State::TxMarking() => {
-                // Time to send data.
-                // We unwrap here because this is undefined if the state
-                // is None (e.g. should only ever be mapped).
-                let state = self.state.take().unwrap();
-                match state {
-                    Sdi12State::Tx(len, data) => {
-                        self.state.replace(Sdi12State::Tx(len, data));
-                    }
-                    _ => unreachable!("SDI12 Alarm fired in unexpected state."),
-                }
-            }
             Sdi12State::Tx(len, data) => {
+                kernel::debug!("SDI12: Transmitting data");
+                kernel::debug!("SDI12: Data length: {}", len);
+                kernel::debug!(
+                    "SDI12: Data content: {}",
+                    core::str::from_utf8(&data[..len]).unwrap_or("<invalid utf8>")
+                );
                 self.uart
                     .transmit_buffer(data, len)
                     .map_err(|(err, buf)| {
