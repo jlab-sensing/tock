@@ -544,10 +544,18 @@ pub unsafe fn main() {
             stm32wle5jc::usart::Usart<'static>,
             VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
         >,
-        stm32wle5jc::sdi12::Sdi12::new(&base_peripherals.usart2, sdi12_usart_pin, virtual_alarm,)
+        stm32wle5jc::sdi12::Sdi12::new(
+            &base_peripherals.usart2,
+            sdi12_usart_pin,
+            sdi12_command_pin,
+            virtual_alarm,
+        )
     );
+    //TODO: figure out why there needs to be a uart_device for the uart to transmit
+    // but the peripheral needs to be set to the transmit client for that to work
     virtual_alarm.set_alarm_client(sdi12_driver);
-    uart_device.set_transmit_client(sdi12_driver);
+    //uart_device.set_transmit_client(sdi12_driver);
+    base_peripherals.usart2.set_transmit_client(sdi12_driver);
 
     let sdi12_ents = static_init!(
         Sdi12Ents<
@@ -558,11 +566,7 @@ pub unsafe fn main() {
                 VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
             >,
         >,
-        capsules_extra::sdi12_ents::Sdi12Ents::new(
-            &mut SDI12_TX_BUF,
-            sdi12_command_pin,
-            sdi12_driver
-        ),
+        capsules_extra::sdi12_ents::Sdi12Ents::new(&mut SDI12_TX_BUF, sdi12_driver),
     );
 
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {

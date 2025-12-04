@@ -1,3 +1,24 @@
+// Licensed under the Apache License, Version 2.0 or the MIT License.
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// Copyright Tock Contributors 2022.
+// Written by Stephen Taylor, UCSD, 2025
+
+//! Provides userspace with access to sdi12 enviormental sensors. Uses a command pin specific to ENTS hardware
+//!
+//! Userspace Interface
+//! -------------------
+//!
+//! ### `command` System Call
+//!
+//! The `command` system call support one argument `cmd` which is used to specify the specific
+//! operation, currently the following cmd's are supported:
+//!
+//! * `0`: check whether the driver exists
+//! * `1`: query the address of connected SDI12 sensor, note this requires the command pin to be connected
+//! and that if multiple sensors are connected they will all respond to this command. Potentially resulting in bus contention
+//!
+//!
+
 use capsules_core::driver;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use capsules_core::virtualizers::virtual_uart::UartDevice;
@@ -5,19 +26,17 @@ use core::cell::Cell;
 use kernel::debug;
 use kernel::errorcode::{into_statuscode, ErrorCode};
 use kernel::hil::gpio::Pin;
+use kernel::hil::sdi12;
+use kernel::hil::sdi12::TransmitClient;
 use kernel::hil::time::{Alarm, AlarmClient, ConvertTicks, Frequency, Ticks, Time, Timer};
-use kernel::hil::uart::TransmitClient;
-use kernel::hil::uart::{Client, ReceiveClient, Uart};
 use kernel::syscall::{CommandReturn, SyscallDriver};
-use kernel::utilities::cells::{OptionalCell, TakeCell};
+use kernel::utilities::cells::TakeCell;
 use kernel::ProcessId;
 
 const REQUEST_MEASURMENT_RESPONSE_SIZE: usize = 7;
 const MEASURMENT_RESPONSE_SIZE: usize = 30;
 const SERVICE_REQUEST_SIZE: usize = 3;
 const WAKE_SENSORS_INTERVAL_MS: u32 = 9;
-
-use kernel::hil::sdi12;
 
 pub const DRIVER_NUM: usize = driver::NUM::Sdi12Ents as usize;
 
@@ -45,55 +64,18 @@ pub enum State {
 pub struct Sdi12Ents<'a, S: sdi12::Transmit<'a>> {
     state: Cell<State>,
     tx_buffer: TakeCell<'static, [u8]>,
-    command_pin: &'a dyn Pin,
     sdi12: &'a S,
 }
 
 impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
-    pub fn new(
-        tx_buffer: &'static mut [u8],
-        command_pin: &'a dyn Pin,
-        sdi12: &'a S,
-    ) -> Sdi12Ents<'a, S> {
+    pub fn new(tx_buffer: &'static mut [u8], sdi12: &'a S) -> Sdi12Ents<'a, S> {
         debug!("Initializing SDI12 capsule");
         Sdi12Ents {
             state: Cell::new(State::Idle),
             tx_buffer: TakeCell::new(tx_buffer),
-            command_pin,
             sdi12,
         }
     }
-
-    /**
-     ******************************************************************************
-     * @brief    Wake all sensors on the data line.
-     *
-     * @param    void
-     * @return   void
-     ******************************************************************************
-     */
-    // pub fn sdi12_wake_sensors(&self) {
-    //     debug!("Waking SDI12 sensors");
-    //     self.command_pin.make_output(); // set control pin as output
-
-    //     self.command_pin.clear(); // set control pin low for TX mode to wake sensors
-
-    //     // Hold USART pin high.
-
-    //     // let buffer = self.tx_buffer.take().unwrap();
-    //     // let command = "\x00"; // send break
-    //     // let command_bytes = command.as_bytes();
-    //     // let len = command.len();
-    //     // buffer[..len].copy_from_slice(&command_bytes[..len]);
-    //     // let status_result = self.uart.transmit_buffer(buffer, len);
-    //     // match status_result {
-    //     //     Ok(()) => debug!("Break sent successfully"),
-    //     //     Err(_) => debug!("Error sending break"),
-    //     // }
-
-    //     let interval = self.alarm.ticks_from_ms(WAKE_SENSORS_INTERVAL_MS);
-    //     self.alarm.set_alarm(self.alarm.now(), interval);
-    // }
 
     /**
      ******************************************************************************
@@ -105,59 +87,27 @@ impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
      */
     pub fn sdi12_send_command(
         &self,
-        command: &str,
+        command: usize,
         size: usize,
     ) -> Result<Sdi12Status, Sdi12Status> {
         self.state.set(State::SendingCommand);
+        let mut command_bytes: [u8; 4] = [0; 4];
+        for i in 0..size {
+            // Convert usize to u8 and store in buffer
+            command_bytes[i] = (command >> (8 * (size - 1 - i))) as u8;
+        }
 
-        self.command_pin.clear(); // set control pin low for TX mode
-
-        let command_bytes = command.as_bytes();
-        let len = size.min(command_bytes.len()); // prevent overflow
+        // let command_bytes = command.as_bytes();
+        // let len = size.min(command.len()); // prevent overflow
         let buffer = self.tx_buffer.take().unwrap();
-        buffer[..len].copy_from_slice(&command_bytes[..len]);
+        buffer[..size].copy_from_slice(&command_bytes[..size]);
         debug!("Beginning capsule call of SDI12 driver");
         let status_result = self.sdi12.transmit(buffer, size);
         match status_result {
             Ok(()) => Ok(Sdi12Status::Sdi12Ok),
             Err(_) => Err(Sdi12Status::Sdi12Error),
         }
-
-        // let command_bytes = command.as_bytes();
-        // let len = size.min(command_bytes.len()); // prevent overflow
-        // let buffer = self.tx_buffer.take().unwrap();
-        // buffer[..len].copy_from_slice(&command_bytes[..len]);
-        // let status_result = self.uart.transmit_buffer(buffer, len);
-        // debug!(
-        //     "Beginning SDI12 transmit: command={}, status_result={:?}, setting control pin high for RX mode",
-        //     command, status_result
-        // );
-        // match status_result {
-        //     Ok(()) => Ok(Sdi12Status::Sdi12Ok),
-        //     Err(_) => Err(Sdi12Status::Sdi12Error),
-        // }
     }
-
-    // /**
-    //  ******************************************************************************
-    //  * @brief    Acknowledge Active
-    //  *
-    //  * @return   Sdi12Status
-    //  ******************************************************************************
-    //  */
-    // pub fn sdi12_ack_active(&self) -> Sdi12Status {
-    //     self.state.set(State::SendingCommand);
-    //     let buffer = "0!!!!!!!!".as_bytes();
-    //     let len = buffer.len();
-    //     let tx_buffer = self.tx_buffer.take().unwrap();
-    //     tx_buffer[..len].copy_from_slice(&buffer[..len]);
-    //     let status_result = self.uart.transmit_buffer(&mut tx_buffer[..len], len);
-    //     debug!("Sending SDI12 Acknowledge Active to Address 0");
-    //     match status_result {
-    //         Ok(()) => Sdi12Status::Sdi12Ok,
-    //         Err(_) => Sdi12Status::Sdi12Error,
-    //     }
-    // }
 }
 
 impl<'a, S> SyscallDriver for Sdi12Ents<'a, S>
@@ -166,15 +116,50 @@ where
 {
     fn command(
         &self,
-        command_num: usize,
-        _: usize,
-        _: usize,
-        processid: ProcessId,
+        _command_num: usize,
+        data1: usize,
+        data2: usize,
+        _processid: ProcessId,
     ) -> CommandReturn {
-        debug!("command syscall executing");
-        let _ = self.sdi12_send_command("a!", 2);
-        self.command_pin.set(); // set control pin high for RX mode
-        CommandReturn::success()
+        // debug!("command syscall executing");
+        kernel::debug!("SDI12 capsule command syscall {}", _command_num);
+        match _command_num {
+            // Driver existence check
+            0 => CommandReturn::success(),
+            // test take measurment command
+            1 => match self.sdi12_send_command(data1, data2) {
+                Ok(_) => CommandReturn::success(),
+                _ => CommandReturn::failure(ErrorCode::FAIL),
+            },
+            2 => {
+                // send address command, may create bus contention if multiple sensors are connected
+                // let command_str = "?!";
+                // let size = 2;
+                match self.sdi12_send_command(data1, data2) {
+                    Ok(_) => CommandReturn::success(),
+                    _ => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            _ => CommandReturn::failure(ErrorCode::INVAL),
+        }
+    }
+
+    fn allow_userspace_readable(
+        &self,
+        app: ProcessId,
+        which: usize,
+        slice: kernel::processbuffer::UserspaceReadableProcessBuffer,
+    ) -> Result<
+        kernel::processbuffer::UserspaceReadableProcessBuffer,
+        (
+            kernel::processbuffer::UserspaceReadableProcessBuffer,
+            ErrorCode,
+        ),
+    > {
+        match which {
+            0 => Ok(slice),
+            _ => Err((slice, ErrorCode::INVAL)),
+        }
     }
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
@@ -184,39 +169,16 @@ where
     }
 }
 
-// impl<'a, U, A> AlarmClient for Sdi12Ents<'a, U, A>
-// where
-//     A: kernel::hil::time::Alarm<'a>,
-//     U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
-// {
-//     fn alarm(&self) {
-//         // match self.state.get() {
-//         //     State::WakingSensors => {
-//         //         self.command_pin.clear();
-//         //         self.state.set(State::Idle);
-//         //     }
-//         //     _ => {}
-//         // }
-//         debug!("SDI12 Alarm fired, sending command");
-//         self.sdi12_send_command("a!", 2);
-//         self.state.set(State::SendingCommand);
-//     }
-// }
-
-// impl<'a, U, A> TransmitClient for Sdi12Ents<'a, U, A>
-// where
-//     A: kernel::hil::time::Alarm<'a>,
-//     U: kernel::hil::uart::Transmit<'a> + kernel::hil::uart::Receive<'a>,
-// {
-//     fn transmitted_buffer(
-//         &self,
-//         buffer: &'static mut [u8],
-//         _length: usize,
-//         _status: Result<(), ErrorCode>,
-//     ) {
-//         debug!("SDI12 Transmit complete");
-//         _status.unwrap();
-//         self.tx_buffer.replace(buffer);
-//         self.command_pin.set(); // set control pin high for RX mode
-//     }
-// }
+impl<'a, S: sdi12::Transmit<'a>> TransmitClient for Sdi12Ents<'a, S> {
+    fn transmitted_buffer(
+        &self,
+        buffer: &'static mut [u8],
+        _length: usize,
+        _status: Result<(), ErrorCode>,
+    ) {
+        debug!("SDI12 capsule Transmit complete, buffer returned");
+        // Put the buffer back into the TakeCell for reuse
+        self.tx_buffer.replace(buffer);
+        self.state.set(State::Idle);
+    }
+}

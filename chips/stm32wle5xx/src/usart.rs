@@ -451,7 +451,6 @@ impl<'a> Usart<'a> {
                     self.tx_status.replace(USARTStateTX::Idle);
                     self.tx_client.map(|client| {
                         if let Some(buf) = self.tx_buffer.take() {
-                            self.registers.isr.modify(ISR::TC::CLEAR);
                             client.transmitted_buffer(buf, self.tx_len.get(), Ok(()));
                         }
                     });
