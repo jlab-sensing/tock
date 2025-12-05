@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-//! Peripheral implementations for the STM32F4xx MCU.
+//! Peripheral implementations for the STM32WL5xx MCU.
 //!
-//! STM32F446RE: <https://www.st.com/en/microcontrollers/stm32f4.html>
+//! STM32WL5xx: <https://www.st.com/en/microcontrollers-microprocessors/stm32wl5x-ex.html>
 
 #![crate_name = "stm32wle5xx"]
 #![crate_type = "rlib"]
@@ -29,7 +29,6 @@ pub mod usart;
 
 // Clocks
 pub mod clocks;
-// pub mod syscfg;
 
 use cortexm4::{initialize_ram_jump_to_main, unhandled_interrupt, CortexM4, CortexMVariant};
 
