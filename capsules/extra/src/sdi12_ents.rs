@@ -123,6 +123,7 @@ where
     ) -> CommandReturn {
         // debug!("command syscall executing");
         kernel::debug!("SDI12 capsule command syscall {}", _command_num);
+        kernel::debug!("data1: {}, data2: {}", data1, data2);
         match _command_num {
             // Driver existence check
             0 => CommandReturn::success(),
@@ -164,8 +165,7 @@ where
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
         // Allocation is performed implicitly when the grant region is entered.
-        //self.apps.enter(processid, |_, _| {});
-        Ok(())
+        self.apps.enter(processid, |_, _| {})
     }
 }
 
