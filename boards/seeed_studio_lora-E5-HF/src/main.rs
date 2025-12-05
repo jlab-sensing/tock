@@ -14,9 +14,12 @@
 
 use core::ptr::addr_of_mut;
 
+use capsules_core::i2c_master::I2CMasterDriver;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use kernel::capabilities;
 use kernel::component::Component;
+use kernel::hil::gpio::Output;
+use kernel::hil::i2c::I2CMaster;
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
@@ -26,6 +29,7 @@ use kernel::{create_capability, debug, static_init};
 use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
 use stm32wle5jc::clocks::msi::MSI_FREQUENCY_MHZ;
 use stm32wle5jc::gpio::{PinId, PortId};
+use stm32wle5jc::i2c::I2C;
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
 
@@ -91,6 +95,10 @@ struct SeeedStudioLoraE5Hf {
         'static,
         stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio<'static>,
     >,
+    i2c_master: &'static capsules_core::i2c_master::I2CMasterDriver<
+        'static,
+        stm32wle5jc::i2c::I2C<'static>,
+    >,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -105,6 +113,7 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Hf {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             LORA_SPI_DRIVER_NUM => f(Some(self.lora_spi_controller)),
             LORA_GPIO_DRIVER_NUM => f(Some(self.lora_gpio)),
+            capsules_core::i2c_master::DRIVER_NUM => f(Some(self.i2c_master)),
             _ => f(None),
         }
     }
@@ -381,13 +390,41 @@ pub unsafe fn main() {
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
     });
 
+    let memory_allocation_capability = create_capability!(capabilities::MemoryAllocationCapability);
+
+    let i2c_master_buffer = static_init!(
+        [u8; capsules_core::i2c_master::BUFFER_LENGTH],
+        [0; capsules_core::i2c_master::BUFFER_LENGTH]
+    );
+    let i2c2 = &base_peripherals.i2c2;
+    let i2c_master = static_init!(
+        I2CMasterDriver<I2C<'static>>,
+        I2CMasterDriver::new(
+            i2c2,
+            i2c_master_buffer,
+            board_kernel.create_grant(
+                capsules_core::i2c_master::DRIVER_NUM,
+                &memory_allocation_capability
+            ),
+        )
+    );
+
     base_peripherals.i2c2.enable_clock();
     base_peripherals
         .i2c2
         .set_speed(stm32wle5jc::i2c::I2CSpeed::Speed400k);
 
+    i2c2.set_master_client(i2c_master);
+    i2c2.enable();
+
+    // temporary code for setting GPIO powerdown pin for board peripherals
+    gpio_ports.get_pin(PinId::PA09).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::GeneralPurposeOutputMode);
+        pin.set();
+    });
+
     // Uncomment to run I2C scan test
-    // test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
+    //test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
 
     //--------------------------------------------------------------------
     // PROCESS CONSOLE
@@ -417,6 +454,7 @@ pub unsafe fn main() {
         alarm,
         lora_spi_controller,
         lora_gpio,
+        i2c_master,
     };
 
     assert!(base_peripherals.subghz_spi.is_enabled_clock());
