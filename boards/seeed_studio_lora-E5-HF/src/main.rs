@@ -342,7 +342,7 @@ pub unsafe fn main() {
     let lora_interrupt_pin = static_init!(
         stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio,
         stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio::new(
-            &base_peripherals.subghz_radio_signal
+            &base_peripherals.subghz_radio_interrupt
         )
     );
 

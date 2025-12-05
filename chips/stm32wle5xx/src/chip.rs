@@ -1,6 +1,6 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
+// Copyright Tock Contributors 2025.
 
 //! Chip trait setup.
 
@@ -29,7 +29,7 @@ pub struct Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
     //pub i2c1: crate::i2c::I2C<'a>,
     pub i2c2: crate::i2c::I2C<'a>,
     pub subghz_spi: crate::spi::Spi<'a>,
-    pub subghz_radio_signal: crate::subghz_radio::SubGhzRadioSignals,
+    pub subghz_radio_interrupt: crate::subghz_radio::SubGhzRadioInterrupt<'a>,
     pub pwr: crate::pwr::Pwr,
     pub uid64: crate::device_signature::Uid64,
 }
@@ -51,7 +51,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
             //i2c1: crate::i2c::I2C::new(clocks),
             i2c2: crate::i2c::I2C::new(clocks),
             subghz_spi: crate::spi::Spi::new_subghzspi(clocks),
-            subghz_radio_signal: crate::subghz_radio::SubGhzRadioSignals::new(),
+            subghz_radio_interrupt: crate::subghz_radio::SubGhzRadioInterrupt::new(),
             pwr: crate::pwr::Pwr::new(),
             uid64: crate::device_signature::Uid64::new(),
         }
@@ -81,7 +81,8 @@ impl<ChipSpecs: ChipSpecsTrait> InterruptService for Stm32wle5xxDefaultPeriphera
                 // This interrupt must be handled from userspace
                 // so we ignore it here. This should never be called
                 // unless we make a mistake with the mask.
-                unreachable!("RADIO_IRQ should be masked out");
+                // unreachable!("RADIO_IRQ should be masked out");
+                self.subghz_radio_interrupt.handle_interrupt();
             }
             nvic::SUBGHZ_SPI => {
                 self.subghz_spi.handle_interrupt();
@@ -136,6 +137,7 @@ impl<'a, I: InterruptService + 'a> Chip for Stm32wle5xx<'a, I> {
                     )) {
                         // check to confirm we masked properly
                         assert!(radio_interrupt == crate::nvic::RADIO_IRQ);
+                        self.interrupt_service.service_interrupt(radio_interrupt);
                         let n = cortexm4::nvic::Nvic::new(radio_interrupt);
                         n.clear_pending();
                         n.enable();
