@@ -1,6 +1,6 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
+// Copyright Tock Contributors 2025.
 
 use cortexm4::support::with_interrupts_disabled;
 use enum_primitive::cast::FromPrimitive;
@@ -410,16 +410,14 @@ pub enum PortId {
     H = 0b111,
 }
 
-/// Name of the GPIO pin on the STM32F446RE.
+/// Name of the GPIO pin on the STM32WLE5xx.
 ///
-/// The "Pinout and pin description" section [^1] of the STM32F446RE datasheet
+/// The "Pinout and pin description" section [^1] of the STM32WLE5xx datasheet
 /// shows the mapping between the names and the hardware pins on different chip
 /// packages.
 ///
 /// The first three bits represent the port and last four bits represent the
 /// pin.
-///
-/// [^1]: Section 4, Pinout and pin description, pages 41-45
 #[rustfmt::skip]
 #[repr(u8)]
 #[derive(Copy, Clone)]
@@ -571,7 +569,8 @@ macro_rules! declare_gpio_pins {
     };
 }
 
-// Note: This would probably be better structured as each port holding
+// Note (from f3 implementation this is based on):
+// This would probably be better structured as each port holding
 // the pins associated with it, but here they are kept separate for
 // historical reasons. If writing new GPIO code, look elsewhere for
 // a template on how to structure the relationship between ports and pins.
