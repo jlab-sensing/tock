@@ -557,6 +557,10 @@ pub unsafe fn main() {
     //uart_device.set_transmit_client(sdi12_driver);
     base_peripherals.usart2.set_transmit_client(sdi12_driver);
 
+    let sdi12_grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
+    let sdi12_driver_process_grant =
+        board_kernel.create_grant(capsules_extra::sdi12_ents::DRIVER_NUM, &sdi12_grant_cap);
+
     let sdi12_ents = static_init!(
         Sdi12Ents<
             'static,
@@ -566,7 +570,11 @@ pub unsafe fn main() {
                 VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
             >,
         >,
-        capsules_extra::sdi12_ents::Sdi12Ents::new(&mut SDI12_TX_BUF, sdi12_driver),
+        capsules_extra::sdi12_ents::Sdi12Ents::new(
+            &mut SDI12_TX_BUF,
+            sdi12_driver,
+            sdi12_driver_process_grant
+        ),
     );
 
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {

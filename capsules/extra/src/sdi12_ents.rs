@@ -25,6 +25,8 @@ use capsules_core::virtualizers::virtual_uart::UartDevice;
 use core::cell::Cell;
 use kernel::debug;
 use kernel::errorcode::{into_statuscode, ErrorCode};
+use kernel::grant::UpcallCount;
+use kernel::grant::{AllowRoCount, AllowRwCount, Grant};
 use kernel::hil::gpio::Pin;
 use kernel::hil::sdi12;
 use kernel::hil::sdi12::TransmitClient;
@@ -61,19 +63,60 @@ pub enum State {
     SendingCommand,
     ReadingResponse,
 }
+
+/// IDs for subscribed upcalls.
+mod upcall {
+    /// Sdi12 received.
+    pub const SDI12_RX: usize = 0;
+    /// Sdi12 transmit complete.
+    pub const SDI12_TX: usize = 1;
+    /// Number of upcalls.
+    pub const COUNT: u8 = 2;
+}
+
+mod ro_allow {
+    /// Tx buffer for SDI12 transmit.
+    pub const TX_BUFFER: usize = 1;
+    /// Number of read-only allow buffers.
+    pub const COUNT: u8 = 1;
+}
+
+mod rw_allow {
+    /// Rx buffer for SDI12 receive.
+    pub const RX_BUFFER: usize = 0;
+    /// Number of read-write allow buffers.
+    pub const COUNT: u8 = 1;
+}
+
 pub struct Sdi12Ents<'a, S: sdi12::Transmit<'a>> {
     state: Cell<State>,
     tx_buffer: TakeCell<'static, [u8]>,
     sdi12: &'a S,
+    grant: Grant<
+        (),
+        UpcallCount<{ upcall::COUNT }>,
+        AllowRoCount<{ ro_allow::COUNT }>,
+        AllowRwCount<{ rw_allow::COUNT }>,
+    >,
 }
 
 impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
-    pub fn new(tx_buffer: &'static mut [u8], sdi12: &'a S) -> Sdi12Ents<'a, S> {
+    pub fn new(
+        tx_buffer: &'static mut [u8],
+        sdi12: &'a S,
+        grant: Grant<
+            (),
+            UpcallCount<{ upcall::COUNT }>,
+            AllowRoCount<{ ro_allow::COUNT }>,
+            AllowRwCount<{ rw_allow::COUNT }>,
+        >,
+    ) -> Sdi12Ents<'a, S> {
         debug!("Initializing SDI12 capsule");
         Sdi12Ents {
             state: Cell::new(State::Idle),
             tx_buffer: TakeCell::new(tx_buffer),
             sdi12,
+            grant: grant,
         }
     }
 
@@ -145,27 +188,28 @@ where
         }
     }
 
-    fn allow_userspace_readable(
-        &self,
-        app: ProcessId,
-        which: usize,
-        slice: kernel::processbuffer::UserspaceReadableProcessBuffer,
-    ) -> Result<
-        kernel::processbuffer::UserspaceReadableProcessBuffer,
-        (
-            kernel::processbuffer::UserspaceReadableProcessBuffer,
-            ErrorCode,
-        ),
-    > {
-        match which {
-            0 => Ok(slice),
-            _ => Err((slice, ErrorCode::INVAL)),
-        }
-    }
+    // @ steve we can remove this / don't need this.
+    // fn allow_userspace_readable(
+    //     &self,
+    //     app: ProcessId,
+    //     which: usize,
+    //     slice: kernel::processbuffer::UserspaceReadableProcessBuffer,
+    // ) -> Result<
+    //     kernel::processbuffer::UserspaceReadableProcessBuffer,
+    //     (
+    //         kernel::processbuffer::UserspaceReadableProcessBuffer,
+    //         ErrorCode,
+    //     ),
+    // > {
+    //     match which {
+    //         0 => Ok(slice),
+    //         _ => Err((slice, ErrorCode::INVAL)),
+    //     }
+    // }
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
         // Allocation is performed implicitly when the grant region is entered.
-        self.apps.enter(processid, |_, _| {})
+        self.grant.enter(processid, |_, _| {})
     }
 }
 
