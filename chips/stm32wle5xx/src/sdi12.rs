@@ -3,6 +3,7 @@ use kernel::hil::sdi12;
 use kernel::hil::time::{Alarm, AlarmClient, ConvertTicks};
 use kernel::hil::uart::{self, Uart};
 
+use kernel::hil::uart::Error;
 use kernel::utilities::cells::{MapCell, OptionalCell};
 
 use kernel::ErrorCode;
@@ -24,7 +25,8 @@ pub struct Sdi12<'a, U: Uart<'a>, A: Alarm<'a>> {
     command_pin: &'a crate::gpio::Pin<'a>,
     alarm: &'a A,
     state: MapCell<Sdi12State>,
-    client: OptionalCell<&'a dyn sdi12::TransmitClient>,
+    tx_client: OptionalCell<&'a dyn sdi12::TransmitClient>,
+    rx_client: OptionalCell<&'a dyn sdi12::ReceiveClient>,
 }
 
 impl<'a, U: Uart<'a>, A: Alarm<'a>> Sdi12<'a, U, A> {
@@ -40,7 +42,8 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> Sdi12<'a, U, A> {
             command_pin,
             alarm,
             state: MapCell::new(Sdi12State::Idle),
-            client: OptionalCell::empty(),
+            tx_client: OptionalCell::empty(),
+            rx_client: OptionalCell::empty(),
         }
     }
 }
@@ -85,7 +88,31 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> sdi12::Transmit<'a> for Sdi12<'a, U, A> {
     }
 
     fn set_transmit_client(&self, client: &'a dyn sdi12::TransmitClient) {
-        self.client.set(client);
+        self.tx_client.set(client);
+    }
+}
+
+impl<'a, U: Uart<'a>, A: Alarm<'a>> sdi12::Receive<'a> for Sdi12<'a, U, A> {
+    fn receive(
+        &self,
+        buffer: &'static mut [u8],
+        max_len: usize,
+    ) -> Result<(), (ErrorCode, &'static mut [u8])> {
+        kernel::debug!("SDI12: Receive requested");
+        match self.uart.receive_buffer(buffer, max_len) {
+            Ok(()) => {
+                kernel::debug!("SDI12: UART receive started successfully");
+                Ok(())
+            }
+            Err((err, buf)) => {
+                kernel::debug!("SDI12: UART receive failed with error: {:?}", err);
+                Err((ErrorCode::FAIL, buf))
+            }
+        }
+    }
+
+    fn set_receive_client(&self, client: &'a dyn sdi12::ReceiveClient) {
+        self.rx_client.set(client);
     }
 }
 
@@ -128,7 +155,7 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> AlarmClient for Sdi12<'a, U, A> {
                         kernel::debug!("SDI12: UART transmit failed with error: {:?}", err);
                         // Transmission failed, return to Idle state and notify client.
                         self.state.replace(Sdi12State::Idle);
-                        self.client
+                        self.tx_client
                             .map(|client| client.transmitted_buffer(buf, len, Err(err)));
                     }
                 }
@@ -148,7 +175,21 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> uart::TransmitClient for Sdi12<'a, U, A> {
         self.command_pin.set(); // set control pin high for RX mode
         kernel::debug!("SDI12: Transmission complete");
         self.state.replace(Sdi12State::Idle);
-        self.client
+        self.tx_client
             .map(|client| client.transmitted_buffer(buffer, length, status));
+    }
+}
+
+impl<'a, U: Uart<'a>, A: Alarm<'a>> uart::ReceiveClient for Sdi12<'a, U, A> {
+    fn received_buffer(
+        &self,
+        buffer: &'static mut [u8],
+        length: usize,
+        status: Result<(), ErrorCode>,
+        error: Error,
+    ) {
+        kernel::debug!("SDI12: Reception complete");
+        self.rx_client
+            .map(|client| client.receive_buffer(buffer, length, status, error));
     }
 }

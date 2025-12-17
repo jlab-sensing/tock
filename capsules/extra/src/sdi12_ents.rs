@@ -20,17 +20,13 @@
 //!
 
 use capsules_core::driver;
-use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
-use capsules_core::virtualizers::virtual_uart::UartDevice;
 use core::cell::Cell;
 use kernel::debug;
 use kernel::errorcode::{into_statuscode, ErrorCode};
 use kernel::grant::UpcallCount;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant};
-use kernel::hil::gpio::Pin;
 use kernel::hil::sdi12;
-use kernel::hil::sdi12::TransmitClient;
-use kernel::hil::time::{Alarm, AlarmClient, ConvertTicks, Frequency, Ticks, Time, Timer};
+use kernel::hil::sdi12::{ReceiveClient, TransmitClient};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::TakeCell;
 use kernel::ProcessId;
@@ -76,7 +72,7 @@ mod upcall {
 
 mod ro_allow {
     /// Tx buffer for SDI12 transmit.
-    pub const TX_BUFFER: usize = 1;
+    pub const TX_BUFFER: usize = 0;
     /// Number of read-only allow buffers.
     pub const COUNT: u8 = 1;
 }
@@ -88,24 +84,30 @@ mod rw_allow {
     pub const COUNT: u8 = 1;
 }
 
-pub struct Sdi12Ents<'a, S: sdi12::Transmit<'a>> {
+pub struct Sdi12Ents<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> {
     state: Cell<State>,
     tx_buffer: TakeCell<'static, [u8]>,
+    rx_buffer: TakeCell<'static, [u8]>,
     sdi12: &'a S,
     grant: Grant<
-        (),
+        App,
         UpcallCount<{ upcall::COUNT }>,
         AllowRoCount<{ ro_allow::COUNT }>,
         AllowRwCount<{ rw_allow::COUNT }>,
     >,
 }
 
-impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
+/// Holds buffers and whatnot that the application has passed us.
+#[derive(Default)]
+pub struct App;
+
+impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> Sdi12Ents<'a, S> {
     pub fn new(
         tx_buffer: &'static mut [u8],
+        rx_buffer: &'static mut [u8],
         sdi12: &'a S,
         grant: Grant<
-            (),
+            App,
             UpcallCount<{ upcall::COUNT }>,
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
@@ -115,6 +117,7 @@ impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
         Sdi12Ents {
             state: Cell::new(State::Idle),
             tx_buffer: TakeCell::new(tx_buffer),
+            rx_buffer: TakeCell::new(rx_buffer),
             sdi12,
             grant: grant,
         }
@@ -124,6 +127,7 @@ impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
      ******************************************************************************
      * @brief    Send a command via SDI12
      *
+     * @param    self,
      * @param    str, command
      * @return   Sdi12Status
      ******************************************************************************
@@ -151,11 +155,40 @@ impl<'a, S: sdi12::Transmit<'a>> Sdi12Ents<'a, S> {
             Err(_) => Err(Sdi12Status::Sdi12Error),
         }
     }
+
+    /**
+     ******************************************************************************
+     * @brief    Start a receive via SDI12
+     *
+     * @param    self,
+     * @param    processid, ProcessID
+     * @param    size, usize
+     * @return   Sdi12Status
+     ******************************************************************************
+     */
+    pub fn sdi12_start_receive(&self, size: usize) -> Result<Sdi12Status, Sdi12Status> {
+        // take a kernel rx buffer
+        if let Some(buf) = self.rx_buffer.take() {
+            match self.sdi12.receive(buf, size) {
+                Ok(()) => {
+                    self.state.set(State::ReadingResponse);
+                    Ok(Sdi12Status::Sdi12Ok)
+                }
+                Err((_ecode, returned_buf)) => {
+                    // restore kernel buffer and return a generic SDI12 error
+                    self.rx_buffer.replace(returned_buf);
+                    Err(Sdi12Status::Sdi12Error)
+                }
+            }
+        } else {
+            Err(Sdi12Status::Sdi12Error)
+        }
+    }
 }
 
 impl<'a, S> SyscallDriver for Sdi12Ents<'a, S>
 where
-    S: sdi12::Transmit<'a>,
+    S: sdi12::Transmit<'a> + sdi12::Receive<'a>,
 {
     fn command(
         &self,
@@ -170,50 +203,41 @@ where
         match _command_num {
             // Driver existence check
             0 => CommandReturn::success(),
-            // test take measurment command
+            // test send data command
             1 => match self.sdi12_send_command(data1, data2) {
                 Ok(_) => CommandReturn::success(),
                 _ => CommandReturn::failure(ErrorCode::FAIL),
             },
             2 => {
-                // send address command, may create bus contention if multiple sensors are connected
-                // let command_str = "?!";
-                // let size = 2;
-                match self.sdi12_send_command(data1, data2) {
-                    Ok(_) => CommandReturn::success(),
-                    _ => CommandReturn::failure(ErrorCode::FAIL),
+                // test read data command
+                let read_buffer = data1;
+                let size = data2;
+
+                // start receive and record process
+                match self.sdi12_start_receive(size) {
+                    Ok(_) => return CommandReturn::success(),
+                    Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
                 }
+            }
+            3 => {
+                // Get measurement command
+                let get_measurement_cmd = data1;
+                let response_buffer = data2;
+
+                return CommandReturn::success();
             }
             _ => CommandReturn::failure(ErrorCode::INVAL),
         }
     }
 
-    // @ steve we can remove this / don't need this.
-    // fn allow_userspace_readable(
-    //     &self,
-    //     app: ProcessId,
-    //     which: usize,
-    //     slice: kernel::processbuffer::UserspaceReadableProcessBuffer,
-    // ) -> Result<
-    //     kernel::processbuffer::UserspaceReadableProcessBuffer,
-    //     (
-    //         kernel::processbuffer::UserspaceReadableProcessBuffer,
-    //         ErrorCode,
-    //     ),
-    // > {
-    //     match which {
-    //         0 => Ok(slice),
-    //         _ => Err((slice, ErrorCode::INVAL)),
-    //     }
-    // }
-
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
         // Allocation is performed implicitly when the grant region is entered.
+        kernel::debug!("Allocating SDI12 capsule grant for process {:?}", processid);
         self.grant.enter(processid, |_, _| {})
     }
 }
 
-impl<'a, S: sdi12::Transmit<'a>> TransmitClient for Sdi12Ents<'a, S> {
+impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> TransmitClient for Sdi12Ents<'a, S> {
     fn transmitted_buffer(
         &self,
         buffer: &'static mut [u8],

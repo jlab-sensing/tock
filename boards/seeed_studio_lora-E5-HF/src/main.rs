@@ -54,6 +54,7 @@ static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::Pr
     None;
 
 static mut SDI12_TX_BUF: [u8; 64] = [0; 64];
+static mut SDI12_RX_BUF: [u8; 64] = [0; 64];
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
@@ -572,6 +573,7 @@ pub unsafe fn main() {
         >,
         capsules_extra::sdi12_ents::Sdi12Ents::new(
             &mut SDI12_TX_BUF,
+            &mut SDI12_RX_BUF,
             sdi12_driver,
             sdi12_driver_process_grant
         ),
