@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2025.
 
+//! Power control peripheral for the STM32WLE5xx series.
+//! This is a partial implementation focusing on exposing the functionality
+//! required for Sub-GHz radio operation.
+
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::registers::{register_bitfields, ReadWrite, WriteOnly};
 use kernel::utilities::StaticRef;

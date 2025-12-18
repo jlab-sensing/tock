@@ -50,7 +50,7 @@ use kernel::debug;
 use kernel::ErrorCode;
 
 /// MSI frequency in MHz
-pub const MSI_FREQUENCY_MHZ: usize = 16;
+pub const MSI_FREQUENCY_MHZ: usize = 4;
 
 /// Main MSI clock structure
 pub struct Msi<'a> {
