@@ -1,12 +1,8 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright OxidOS Automotive SRL.
-//
-// Author: Ioan-Cristian CÎRSTEA <ioan.cirstea@oxidos.io>
+// Copyright Tock Contributors 2025.
 
-//! STM32F429 specifications
-
-// TODO: THESE VALUES ARE NOT FILLED IN...JUST COPIED FROM F429
+// (TODO): THESE VALUES ARE NOT FILLED IN...JUST COPIED FROM F4 for now.
 use stm32wle5xx::chip_specific::clock_constants::{PllConstants, SystemClockConstants};
 
 pub enum Stm32wle5jcSpecs {}

@@ -1,13 +1,12 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
+// Copyright Tock Contributors 2025.
 
 use crate::chip_specs::Stm32wle5jcSpecs;
 use stm32wle5xx::chip::Stm32wle5xxDefaultPeripherals;
 
 pub struct Stm32wle5jcDefaultPeripherals<'a> {
     pub stm32wle: Stm32wle5xxDefaultPeripherals<'a, Stm32wle5jcSpecs>,
-    // Once implemented, place Stm32f446re specific peripherals here
 }
 
 impl<'a> Stm32wle5jcDefaultPeripherals<'a> {
