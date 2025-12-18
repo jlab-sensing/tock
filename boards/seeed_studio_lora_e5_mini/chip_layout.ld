@@ -3,7 +3,7 @@
 /* Copyright Tock Contributors 2025.                                  */
 
 /* Memory layout for the STM32WLE5JC 
- * rom = 252KB 
+ * rom = 256KB 
  * kernel = 128KB
  * user = 128KB
  * ram = 64KB */
