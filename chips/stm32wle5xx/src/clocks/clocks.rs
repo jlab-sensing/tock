@@ -311,8 +311,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
     ///
     /// + pll_source: PLL source clock (HSI or HSE or MSI)
     ///
-    /// + desired_frequency_mhz: the desired frequency in MHz. Supported values: 24-216MHz for
-    /// STM32F401 and 13-216MHz for all the other chips
+    /// + desired_frequency_mhz: the desired frequency in MHz.
     ///
     /// # Errors
     ///
@@ -391,7 +390,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Clocks<'a, ChipSpecs> {
     }
 }
 
-/// Stm32f4Clocks trait
+/// Stm32WLE5xx Clocks trait
 ///
 /// This can be used to control clocks without the need to keep a reference of the chip specific
 /// Clocks struct, for instance by peripherals

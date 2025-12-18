@@ -1,8 +1,6 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright OxidOS Automotive SRL.
-//
-// Author: Ioan-Cristian CÎRSTEA <ioan.cirstea@oxidos.io>
+// Copyright Tock Contributors 2025.
 
 //! Clock-related constants for a particular chip
 

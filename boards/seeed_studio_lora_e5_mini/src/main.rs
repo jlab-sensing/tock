@@ -1,6 +1,6 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
+// Copyright Tock Contributors 2025.
 
 //! Board file for STM32WLE5JC Seeed Studio LoRa E5 HF mini development board.
 //!
@@ -79,7 +79,7 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
-struct SeeedStudioLoraE5Hf {
+struct SeeedStudioLoraE5Mini {
     scheduler: &'static RoundRobinSched<'static>,
     systick: cortexm4::systick::SysTick,
     console: &'static capsules_core::console::Console<'static>,
@@ -110,7 +110,7 @@ struct SeeedStudioLoraE5Hf {
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
-impl SyscallDriverLookup for SeeedStudioLoraE5Hf {
+impl SyscallDriverLookup for SeeedStudioLoraE5Mini {
     fn with_driver<F, R>(&self, driver_num: usize, f: F) -> R
     where
         F: FnOnce(Option<&dyn kernel::syscall::SyscallDriver>) -> R,
@@ -133,7 +133,7 @@ impl
             'static,
             stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals<'static>,
         >,
-    > for SeeedStudioLoraE5Hf
+    > for SeeedStudioLoraE5Mini
 {
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
@@ -452,7 +452,7 @@ pub unsafe fn main() {
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
-    let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
+    let seeed_studio_lora_e5_mini = SeeedStudioLoraE5Mini {
         scheduler,
         systick: cortexm4::systick::SysTick::new_with_calibration(
             (MSI_FREQUENCY_MHZ * 1_000_000) as u32,
@@ -504,7 +504,7 @@ pub unsafe fn main() {
     .run();*/
 
     board_kernel.kernel_loop(
-        &seeed_studio_lora_e5_hf,
+        &seeed_studio_lora_e5_mini,
         chip,
         None::<&kernel::ipc::IPC<2>>,
         &main_loop_capability,

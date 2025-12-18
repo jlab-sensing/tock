@@ -1,9 +1,8 @@
 # Licensed under the Apache License, Version 2.0 or the MIT License.
 # SPDX-License-Identifier: Apache-2.0 OR MIT
-# Copyright Tock Contributors 2022.
+# Copyright Tock Contributors 2025.
 
-# Makefile for building the tock kernel for the STM32F429i Discovery board
-#
+# Makefile for building the tock kernel for the Seeed Studio LoRa E5 Mini board
 
 include ../Makefile.common
 

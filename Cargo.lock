@@ -1331,7 +1331,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "seeed_studio_lora-E5-HF"
+name = "seeed_studio_lora_e5_mini"
 version = "0.2.3-dev"
 dependencies = [
  "capsules-core",

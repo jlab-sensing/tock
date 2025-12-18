@@ -491,9 +491,7 @@ impl PinId {
 enum_from_primitive! {
     #[repr(u32)]
     #[derive(PartialEq)]
-    /// GPIO pin mode [^1]
-    ///
-    /// [^1]: Section 7.1.4, page 187 of reference manual
+    /// GPIO pin mode.
     pub enum Mode {
         Input = 0b00,
         GeneralPurposeOutputMode = 0b01,
@@ -504,17 +502,10 @@ enum_from_primitive! {
 
 /// Alternate functions that may be assigned to a `Pin`.
 ///
-/// GPIO pins on the STM32F446RE may serve multiple functions. In addition to
+/// GPIO pins on the STM32WLE5xx may serve multiple functions. In addition to
 /// the default functionality, each pin can be assigned up to sixteen different
 /// alternate functions. The various functions for each pin are described in
-/// "Alternate Function"" section of the STM32F446RE datasheet[^1].
-///
-/// Alternate Function bit mapping is shown here[^2].
-///
-/// [^1]: Section 4, Pinout and pin description, Table 11. Alternate function,
-///       pages 59-66
-///
-/// [^2]: Section 7.4.9, page 192 of Reference Manual
+/// "Alternate Function"" section of the STM32WLE5xx datasheet.
 #[repr(u32)]
 pub enum AlternateFunction {
     AF0 = 0b0000,

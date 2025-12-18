@@ -201,8 +201,7 @@ impl<'a, PllConstants: clock_constants::PllConstants> Pll<'a, PllConstants> {
     /// + source_frequency: the frequency of the PLL source clock in MHz. For the HSI the frequency
     /// is fixed to 16MHz. For the HSE, the frequency is hardware-dependent
     ///
-    /// + desired_frequency_mhz: the desired frequency in MHz. Supported values: 24-216MHz for
-    /// STM32F401 and 13-216MHz for all the other chips
+    /// + desired_frequency_mhz: the desired frequency in MHz.
     ///
     /// # Errors
     ///

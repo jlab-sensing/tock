@@ -500,11 +500,6 @@ impl<'a> spi::SpiMaster<'a> for Spi<'a> {
 
     /// (TODO) Need to fix / update the baud rate calc here.
     fn set_rate(&self, _rate: u32) -> Result<u32, ErrorCode> {
-        // debug! ("stm32f3 spi set rate");
-        // if rate != 1_000_000 {
-        //     return Err(ErrorCode::INVAL);
-        // }
-
         self.set_cr(|| {
             // HSI is 8Mhz and Fpclk is also 8Mhz. 0b111 is Fpclk / 256 = 31.25KHz
             self.registers.cr1.modify(CR1::BR.val(0b111));
