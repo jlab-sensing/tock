@@ -84,7 +84,6 @@ impl SubGhzRadioInterrupt<'_> {
 
         // notify client
         self.client.map(|client| {
-            kernel::debug!("SubGhzRadioInterrupt: notifying client");
             client.fired();
         });
 
@@ -117,7 +116,6 @@ impl<'a> VirtualGpio<'a> for SubGhzRadioInterrupt<'a> {
     }
 
     fn enable_interrupts(&self) {
-        kernel::debug!("SubGhzRadioInterrupt: enable_interrupts called");
         self.interrupt_disabled.set(false);
     }
 }
@@ -190,15 +188,11 @@ impl<'a> Interrupt<'a> for SubGhzRadioVirtualGpio<'a> {
     fn is_pending(&self) -> bool {
         unsafe {
             cortexm4::nvic::next_pending_with_mask((u128::MAX, !(1 << crate::nvic::RADIO_IRQ)))
-                .is_some_and(|_| {
-                    // kernel::debug!("subghz radio interrupt pending");
-                    true
-                })
+                .is_some_and(|_| true)
         }
     }
 
     fn set_client(&self, client: &'a dyn kernel::hil::gpio::Client) {
-        kernel::debug!("SubGhzRadioVirtualGpio: set_client called");
         self.reader.set_client(client);
     }
 }

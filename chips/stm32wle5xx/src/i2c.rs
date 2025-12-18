@@ -318,19 +318,14 @@ impl<'a> I2C<'a> {
     pub fn set_speed(&self, speed: I2CSpeed) {
         let clk_speed = self.clock.0.get_frequency();
 
-        // TODO (John) check this is true.
         if clk_speed != 4_000_000 {
             panic!("Timing calculations only valid for 4MHz PCLK1");
         }
 
-        // doesn't actually correctly calculate timings. Seems to be off by a factor of 4. Could be
-        // that the pclk freq reported by the clock module is wrong? Was generated with CubeMX
         match speed {
-            // More like 25k
             I2CSpeed::Speed100k => {
                 self.registers.timingr.set(0x00303D5B);
             }
-            // More like 100k
             I2CSpeed::Speed400k => {
                 self.registers.timingr.set(0x0010061A);
             }
@@ -358,7 +353,6 @@ impl<'a> I2C<'a> {
 
         // send next byte when TXIS is set
         if self.registers.isr.is_set(ISR::TXIS) {
-            // check data is available
             if self.buffer.is_some() && self.tx_position.get() < self.tx_len.get() {
                 // ready to send data
                 self.buffer.take().map(|buf| {
@@ -392,14 +386,12 @@ impl<'a> I2C<'a> {
         // From HAL drivers: apparently there's no need to check for TC since the STOP condition is
         // automatically generated.
         if self.registers.isr.is_set(ISR::STOPF) {
-            // clear stop flag
             self.registers.icr.write(ICR::STOPCF::SET);
 
             match self.status.get() {
                 I2CStatus::Writing | I2CStatus::Reading => {
                     // transaction complete
                     self.status.set(I2CStatus::Idle);
-                    // send message back to driver
                     self.master_client.map(|client| {
                         self.buffer
                             .take()
@@ -462,16 +454,12 @@ impl<'a> I2C<'a> {
         self.registers.cr1.modify(CR1::RXIE::CLEAR);
         self.registers.cr1.modify(CR1::NACKIE::CLEAR);
         self.registers.cr1.modify(CR1::STOPIE::CLEAR);
-        //self.registers.cr1.modify(CR1::TCIE::CLEAR);
         self.registers.cr1.modify(CR1::ERRIE::CLEAR);
 
         self.status.set(I2CStatus::Idle);
     }
 
     fn start_read(&self) {
-        // check interface is not busy? maybe just error out?
-        //while self.registers.isr.read(ISR::BUSY) != 0 {}
-
         if self.rx_len.get() <= 255 {
             self.rx_position.set(0);
             // set number of bytes to send

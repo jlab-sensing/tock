@@ -528,9 +528,7 @@ pub enum AlternateFunction {
 
 enum_from_primitive! {
     #[repr(u32)]
-    /// GPIO pin internal pull-up and pull-down [^1]
-    ///
-    /// [^1]: Section 7.4.4, page 189 of reference manual
+    /// GPIO pin internal pull-up and pull-down.
     enum PullUpPullDown {
         NoPullUpPullDown = 0b00,
         PullUp = 0b01,

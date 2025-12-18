@@ -26,7 +26,7 @@ pub struct Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
     pub usart1: crate::usart::Usart<'a>,
     pub usart2: crate::usart::Usart<'a>,
     pub tim2: crate::tim2::Tim2<'a>,
-    //pub i2c1: crate::i2c::I2C<'a>,
+    // pub i2c1: crate::i2c::I2C<'a>,
     pub i2c2: crate::i2c::I2C<'a>,
     pub subghz_spi: crate::spi::Spi<'a>,
     pub subghz_radio_interrupt: crate::subghz_radio::SubGhzRadioInterrupt<'a>,
@@ -48,7 +48,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
             usart1: crate::usart::Usart::new_usart1(clocks),
             usart2: crate::usart::Usart::new_usart2(clocks),
             tim2: crate::tim2::Tim2::new(clocks),
-            //i2c1: crate::i2c::I2C::new(clocks),
+            // i2c1: crate::i2c::I2C::new(clocks),
             i2c2: crate::i2c::I2C::new(clocks),
             subghz_spi: crate::spi::Spi::new_subghzspi(clocks),
             subghz_radio_interrupt: crate::subghz_radio::SubGhzRadioInterrupt::new(),
@@ -72,16 +72,12 @@ impl<ChipSpecs: ChipSpecsTrait> InterruptService for Stm32wle5xxDefaultPeriphera
             nvic::USART2 => self.usart2.handle_interrupt(),
             nvic::TIM2 => self.tim2.handle_interrupt(),
 
-            //nvic::I2C1_EV => self.i2c1.handle_event(),
-            //nvic::I2C1_ER => self.i2c1.handle_error(),
+            // nvic::I2C1_EV => self.i2c1.handle_event(),
+            // nvic::I2C1_ER => self.i2c1.handle_error(),
             nvic::I2C2_EV => self.i2c2.handle_event(),
             nvic::I2C2_ER => self.i2c2.handle_error_event(),
 
             nvic::RADIO_IRQ => {
-                // This interrupt must be handled from userspace
-                // so we ignore it here. This should never be called
-                // unless we make a mistake with the mask.
-                // unreachable!("RADIO_IRQ should be masked out");
                 self.subghz_radio_interrupt.handle_interrupt();
             }
             nvic::SUBGHZ_SPI => {
