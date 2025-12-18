@@ -350,7 +350,7 @@ impl CortexMRegion {
         let logical_end = logical_start as usize + logical_size;
 
         // The end address must be aligned to 32 bytes.
-        if logical_end % 32 != 0 {
+        if !logical_end.is_multiple_of(32) {
             return None;
         }
 
@@ -394,7 +394,10 @@ impl CortexMRegion {
     }
 }
 
-impl<const NUM_REGIONS: usize> mpu::MPU for MPU<NUM_REGIONS> {
+// `MPU` is an unsafe trait, and with this implementation we guarantee
+// that we adhere to the semantics documented on that trait and its
+// associated types and methods.
+unsafe impl<const NUM_REGIONS: usize> mpu::MPU for MPU<NUM_REGIONS> {
     type MpuConfig = CortexMConfig<NUM_REGIONS>;
 
     fn enable_app_mpu(&self) {
@@ -405,7 +408,7 @@ impl<const NUM_REGIONS: usize> mpu::MPU for MPU<NUM_REGIONS> {
             .write(MPU_CTRL::ENABLE::SET + MPU_CTRL::HFNMIENA::CLEAR + MPU_CTRL::PRIVDEFENA::SET);
     }
 
-    fn disable_app_mpu(&self) {
+    unsafe fn disable_app_mpu(&self) {
         // The MPU is not enabled for privileged mode, so we don't have to do
         // anything
         self.registers.ctrl.write(MPU_CTRL::ENABLE::CLEAR);
@@ -644,7 +647,7 @@ impl<const NUM_REGIONS: usize> mpu::MPU for MPU<NUM_REGIONS> {
         Ok(())
     }
 
-    fn configure_mpu(&self, config: &Self::MpuConfig) {
+    unsafe fn configure_mpu(&self, config: &Self::MpuConfig) {
         // Set ATTR0 to Normal Memory, Outer and Inner Non-cacheable.
         self.registers
             .mair0

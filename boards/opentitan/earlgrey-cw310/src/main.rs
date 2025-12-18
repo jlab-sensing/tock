@@ -24,6 +24,7 @@ use earlgrey::chip_config::EarlGreyConfig;
 use earlgrey::pinmux_config::EarlGreyPinmuxConfig;
 use kernel::capabilities;
 use kernel::component::Component;
+use kernel::debug::PanicResources;
 use kernel::hil;
 use kernel::hil::entropy::Entropy32;
 use kernel::hil::hasher::Hasher;
@@ -31,11 +32,10 @@ use kernel::hil::i2c::I2CMaster;
 use kernel::hil::led::LedHigh;
 use kernel::hil::rng::Rng;
 use kernel::hil::symmetric_encryption::AES128;
-use kernel::platform::scheduler_timer::VirtualSchedulerTimer;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::process::ProcessArray;
 use kernel::scheduler::priority::PrioritySched;
 use kernel::utilities::registers::interfaces::ReadWriteable;
+use kernel::utilities::single_thread_value::SingleThreadValue;
 use kernel::{create_capability, debug, static_init};
 use lowrisc::flash_ctrl::FlashMPConfig;
 use rv32i::csr;
@@ -106,9 +106,14 @@ pub type EarlGreyChip = earlgrey::chip::EarlGrey<
 const NUM_PROCS: usize = 4;
 
 type ChipHw = EarlGreyChip;
+type AlarmHw = earlgrey::timer::RvTimer<'static, ChipConfig>;
+type SchedulerTimerHw =
+    components::virtual_scheduler_timer::VirtualSchedulerTimerComponentType<AlarmHw>;
+type ProcessPrinterInUse = capsules_system::process_printer::ProcessPrinterText;
 
-/// Static variables used by io.rs.
-static mut PROCESSES: Option<&'static ProcessArray<NUM_PROCS>> = None;
+/// Resources for when a board panics used by io.rs.
+static PANIC_RESOURCES: SingleThreadValue<PanicResources<ChipHw, ProcessPrinterInUse>> =
+    SingleThreadValue::new(PanicResources::new());
 
 // Test access to the peripherals
 #[cfg(test)]
@@ -154,10 +159,6 @@ static mut RSA_HARDWARE: Option<&lowrisc::rsa::OtbnRsa<'static>> = None;
 // Test access to a software SHA256
 #[cfg(test)]
 static mut SHA256SOFT: Option<&capsules_extra::sha256::Sha256Software<'static>> = None;
-
-static mut CHIP: Option<&'static EarlGreyChip> = None;
-static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
-    None;
 
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
@@ -231,9 +232,7 @@ struct EarlGrey {
     >,
     syscall_filter: &'static TbfHeaderFilterDefaultAllow,
     scheduler: &'static PrioritySched,
-    scheduler_timer: &'static VirtualSchedulerTimer<
-        VirtualMuxAlarm<'static, earlgrey::timer::RvTimer<'static, ChipConfig>>,
-    >,
+    scheduler_timer: &'static SchedulerTimerHw,
     watchdog: &'static lowrisc::aon_timer::AonTimer,
 }
 
@@ -265,9 +264,7 @@ impl KernelResources<EarlGreyChip> for EarlGrey {
     type SyscallFilter = TbfHeaderFilterDefaultAllow;
     type ProcessFault = ();
     type Scheduler = PrioritySched;
-    type SchedulerTimer = VirtualSchedulerTimer<
-        VirtualMuxAlarm<'static, earlgrey::timer::RvTimer<'static, ChipConfig>>,
-    >;
+    type SchedulerTimer = SchedulerTimerHw;
     type WatchDog = lowrisc::aon_timer::AonTimer;
     type ContextSwitchCallback = ();
 
@@ -329,6 +326,15 @@ unsafe fn setup() -> (
     // Ibex-specific handler
     earlgrey::chip::configure_trap_handler();
 
+    // Initialize deferred calls very early.
+    kernel::deferred_call::initialize_deferred_call_state_unsafe::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >();
+
+    // Bind global variables to this thread.
+    PANIC_RESOURCES
+        .bind_to_thread_unsafe::<<ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider>();
+
     // Set up memory protection immediately after setting the trap handler, to
     // ensure that much of the board initialization routine runs with ePMP
     // protection.
@@ -385,7 +391,9 @@ unsafe fn setup() -> (
     // Create an array to hold process references.
     let processes = components::process_array::ProcessArrayComponent::new()
         .finalize(components::process_array_component_static!(NUM_PROCS));
-    PROCESSES = Some(processes);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.processes.put(processes.as_slice());
+    });
 
     // Setup space to store the core kernel data structure.
     let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(processes.as_slice()));
@@ -397,11 +405,17 @@ unsafe fn setup() -> (
     peripherals.init();
 
     // Configure kernel debug gpios as early as possible
-    kernel::debug::assign_gpios(
-        Some(&peripherals.gpio_port[7]), // First LED
-        None,
-        None,
+    let debug_gpios = static_init!(
+        [&'static dyn kernel::hil::gpio::Pin; 1],
+        [
+            // First LED
+            &peripherals.gpio_port[7]
+        ]
     );
+    kernel::debug::initialize_debug_gpio_unsafe::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >();
+    kernel::debug::assign_gpios(debug_gpios);
 
     // Create a shared UART channel for the console and for kernel debug.
     let uart_mux =
@@ -464,12 +478,6 @@ unsafe fn setup() -> (
     );
     virtual_alarm_user.setup();
 
-    let scheduler_timer_virtual_alarm = static_init!(
-        VirtualMuxAlarm<'static, earlgrey::timer::RvTimer<ChipConfig>>,
-        VirtualMuxAlarm::new(mux_alarm)
-    );
-    scheduler_timer_virtual_alarm.setup();
-
     let alarm = static_init!(
         capsules_core::alarm::AlarmDriver<
             'static,
@@ -482,18 +490,19 @@ unsafe fn setup() -> (
     );
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
 
-    let scheduler_timer = static_init!(
-        VirtualSchedulerTimer<
-            VirtualMuxAlarm<'static, earlgrey::timer::RvTimer<'static, ChipConfig>>,
-        >,
-        VirtualSchedulerTimer::new(scheduler_timer_virtual_alarm)
-    );
+    let scheduler_timer =
+        components::virtual_scheduler_timer::VirtualSchedulerTimerComponent::new(mux_alarm)
+            .finalize(components::virtual_scheduler_timer_component_static!(
+                AlarmHw
+            ));
 
     let chip = static_init!(
         EarlGreyChip,
         earlgrey::chip::EarlGrey::new(peripherals, hardware_alarm, earlgrey_epmp)
     );
-    CHIP = Some(chip);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.chip.put(chip);
+    });
 
     // Need to enable all interrupts for Tock Kernel
     chip.enable_plic_interrupts();
@@ -571,7 +580,9 @@ unsafe fn setup() -> (
 
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
-    PROCESS_PRINTER = Some(process_printer);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.printer.put(process_printer);
+    });
 
     // USB support is currently broken in the OpenTitan hardware
     // See https://github.com/lowRISC/opentitan/issues/2598 for more details
