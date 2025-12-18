@@ -4,7 +4,6 @@
 
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::ptr::addr_of;
 use core::ptr::addr_of_mut;
 
 use kernel::debug::IoWrite;
@@ -16,11 +15,6 @@ use kernel::hil::uart::Configure;
 use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
 use stm32wle5jc::clocks;
 use stm32wle5jc::gpio::PinId;
-
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
-
 /// Writer is used by kernel::debug to panic message to the serial port.
 pub struct Writer {
     initialized: bool,
@@ -121,9 +115,7 @@ pub unsafe fn panic_fmt(info: &PanicInfo) -> ! {
         &mut *addr_of_mut!(WRITER),
         info,
         &cortexm4::support::nop,
-        PROCESSES.unwrap().as_slice(),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     );
 
     // Unique LED blink pattern for panic

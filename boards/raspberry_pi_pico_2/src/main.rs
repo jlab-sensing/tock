@@ -19,11 +19,12 @@ use components::gpio::GpioComponent;
 use components::led::LedsComponent;
 use enum_primitive::cast::FromPrimitive;
 use kernel::component::Component;
+use kernel::debug::PanicResources;
 use kernel::hil::led::LedHigh;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::syscall::SyscallDriver;
+use kernel::utilities::single_thread_value::SingleThreadValue;
 use kernel::{capabilities, create_capability, static_init, Kernel};
 
 use rp2350::chip::{Rp2350, Rp2350DefaultPeripherals};
@@ -43,17 +44,28 @@ mod io;
 mod flash_bootloader;
 
 /// Allocate memory for the stack
+//
+// When compiling for a macOS host, the `link_section` attribute is elided as
+// it yields the following error: `mach-o section specifier requires a segment
+// and section separated by a comma`.
+#[cfg_attr(not(target_os = "macos"), link_section = ".stack_buffer")]
 #[no_mangle]
-#[link_section = ".stack_buffer"]
 static mut STACK_MEMORY: [u8; 0x3000] = [0; 0x3000];
 
 // Manually setting the boot header section that contains the FCB header
+//
+// When compiling for a macOS host, the `link_section` attribute is elided as
+// it yields the following error: `mach-o section specifier requires a segment
+// and section separated by a comma`.
+#[cfg_attr(not(target_os = "macos"), link_section = ".flash_bootloader")]
 #[used]
-#[link_section = ".flash_bootloader"]
 static FLASH_BOOTLOADER: [u8; 256] = flash_bootloader::FLASH_BOOTLOADER;
 
+// When compiling for a macOS host, the `link_section` attribute is elided as
+// it yields the following error: `mach-o section specifier requires a segment
+// and section separated by a comma`.
+#[cfg_attr(not(target_os = "macos"), link_section = ".metadata_block")]
 #[used]
-#[link_section = ".metadata_block"]
 static METADATA_BLOCK: [u8; 28] = flash_bootloader::METADATA_BLOCK;
 
 // State for loading and holding applications.
@@ -65,13 +77,11 @@ const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
 const NUM_PROCS: usize = 4;
 
 type ChipHw = Rp2350<'static, Rp2350DefaultPeripherals<'static>>;
+type ProcessPrinterInUse = capsules_system::process_printer::ProcessPrinterText;
 
-/// Static variables used by io.rs.
-static mut PROCESSES: Option<&'static ProcessArray<NUM_PROCS>> = None;
-
-static mut CHIP: Option<&'static Rp2350<Rp2350DefaultPeripherals<'static>>> = None;
-static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
-    None;
+/// Resources for when a board panics used by io.rs.
+static PANIC_RESOURCES: SingleThreadValue<PanicResources<ChipHw, ProcessPrinterInUse>> =
+    SingleThreadValue::new(PanicResources::new());
 
 /// Supported drivers by the platform
 pub struct RaspberryPiPico2 {
@@ -245,6 +255,14 @@ unsafe fn get_peripherals() -> &'static mut Rp2350DefaultPeripherals<'static> {
 pub unsafe fn main() {
     rp2350::init();
 
+    // Initialize deferred calls very early.
+    kernel::deferred_call::initialize_deferred_call_state::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >();
+
+    // Bind global variables to this thread.
+    PANIC_RESOURCES.bind_to_thread::<<ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider>();
+
     let peripherals = get_peripherals();
     peripherals.resolve_dependencies();
 
@@ -279,13 +297,16 @@ pub unsafe fn main() {
         Rp2350<Rp2350DefaultPeripherals>,
         Rp2350::new(peripherals, &peripherals.sio)
     );
-
-    CHIP = Some(chip);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.chip.put(chip);
+    });
 
     // Create an array to hold process references.
     let processes = components::process_array::ProcessArrayComponent::new()
         .finalize(components::process_array_component_static!(NUM_PROCS));
-    PROCESSES = Some(processes);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.processes.put(processes.as_slice());
+    });
 
     let board_kernel = static_init!(Kernel, Kernel::new(processes.as_slice()));
 
@@ -372,7 +393,9 @@ pub unsafe fn main() {
     // PROCESS CONSOLE
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
-    PROCESS_PRINTER = Some(process_printer);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.printer.put(process_printer);
+    });
 
     let process_console = components::process_console::ProcessConsoleComponent::new(
         board_kernel,

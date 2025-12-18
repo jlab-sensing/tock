@@ -400,7 +400,7 @@ const GPIOB_BASE: StaticRef<GpioRegisters> =
 const GPIOA_BASE: StaticRef<GpioRegisters> =
     unsafe { StaticRef::new(0x48000000 as *const GpioRegisters) };
 
-/// STM32WLE5xx has eight GPIO ports labeled from A-H [^1]. This is represented
+/// STM32WLE5xx has eight GPIO ports labeled from A-H. This is represented
 /// by three bits.
 #[repr(u32)]
 pub enum PortId {
@@ -412,7 +412,7 @@ pub enum PortId {
 
 /// Name of the GPIO pin on the STM32WLE5xx.
 ///
-/// The "Pinout and pin description" section [^1] of the STM32WLE5xx datasheet
+/// The "Pinout and pin description" section of the STM32WLE5xx datasheet
 /// shows the mapping between the names and the hardware pins on different chip
 /// packages.
 ///
@@ -455,7 +455,7 @@ impl<'a> GpioPorts<'a> {
         self.pins[usize::from(port_num)][usize::from(pin_num)].as_ref()
     }
 
-    pub fn get_port(&self, pinid: PinId) -> &Port {
+    pub fn get_port(&self, pinid: PinId) -> &Port<'_> {
         let mut port_num: u8 = pinid as u8;
 
         // Right shift p by 4 bits, so we can get rid of pin bits
@@ -463,7 +463,7 @@ impl<'a> GpioPorts<'a> {
         &self.ports[usize::from(port_num)]
     }
 
-    pub fn get_port_from_port_id(&self, portid: PortId) -> &Port {
+    pub fn get_port_from_port_id(&self, portid: PortId) -> &Port<'_> {
         &self.ports[portid as usize]
     }
 }

@@ -12,11 +12,17 @@
 //! hardware:
 //!
 //! ```ignore
-//! kernel::debug::assign_gpios(
-//!     Some(&sam4l::gpio::PA[13]),
-//!     Some(&sam4l::gpio::PA[15]),
-//!     None,
+//! let debug_gpios = static_init!(
+//!     [&'static dyn kernel::hil::gpio::Pin; 2],
+//!     [
+//!         &sam4l::gpio::PA[13],
+//!         &sam4l::gpio::PA[15],
+//!     ]
 //! );
+//! kernel::debug::initialize_debug_gpio::<
+//!     <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+//! >();
+//! kernel::debug::assign_gpios(debug_gpios);
 //!
 //! components::debug_writer::DebugWriterComponent::new(
 //!     uart_mux,
@@ -143,6 +149,27 @@ pub trait IoWrite {
 ///////////////////////////////////////////////////////////////////
 // panic! support routines
 
+/// Resources needed by the main panic routines.
+pub struct PanicResources<C: Chip + 'static, PP: ProcessPrinter + 'static> {
+    /// The array of process slots.
+    pub processes: MapCell<&'static [ProcessSlot]>,
+    /// The board-specific chip object.
+    pub chip: MapCell<&'static C>,
+    /// The tool for printing process details.
+    pub printer: MapCell<&'static PP>,
+}
+
+impl<C: Chip, PP: ProcessPrinter> PanicResources<C, PP> {
+    /// Create a new [`BoardPanic`] with nothing stored.
+    pub const fn new() -> Self {
+        Self {
+            processes: MapCell::empty(),
+            chip: MapCell::empty(),
+            printer: MapCell::empty(),
+        }
+    }
+}
+
 /// Tock panic routine, without the infinite LED-blinking loop.
 ///
 /// This is useful for boards which do not feature LEDs to blink or want to
@@ -158,25 +185,29 @@ pub unsafe fn panic_print<W: Write + IoWrite, C: Chip, PP: ProcessPrinter>(
     writer: &mut W,
     panic_info: &PanicInfo,
     nop: &dyn Fn(),
-    processes: &'static [ProcessSlot],
-    chip: &'static Option<&'static C>,
-    process_printer: &'static Option<&'static PP>,
+    panic_resources: Option<&PanicResources<C, PP>>,
 ) {
     panic_begin(nop);
     // Flush debug buffer if needed
     flush(writer);
     panic_banner(writer, panic_info);
-    panic_cpu_state(chip, writer);
 
-    // Some systems may enforce memory protection regions for the kernel, making
-    // application memory inaccessible. However, printing process information
-    // will attempt to access memory. If we are provided a chip reference,
-    // attempt to disable userspace memory protection first:
-    chip.map(|c| {
-        use crate::platform::mpu::MPU;
-        c.mpu().disable_app_mpu()
+    panic_resources.map(|pr| {
+        let chip = pr.chip.take();
+        panic_cpu_state(chip, writer);
+
+        chip.map(|c| {
+            // Some systems may enforce memory protection regions for the kernel,
+            // making application memory inaccessible. However, printing process
+            // information will attempt to access memory. If we are provided a chip
+            // reference, attempt to disable userspace memory protection first:
+            use crate::platform::mpu::MPU;
+            c.mpu().disable_app_mpu()
+        });
+        pr.processes.take().map(|p| {
+            panic_process_info(p, pr.printer.take(), writer);
+        });
     });
-    panic_process_info(processes, process_printer, writer);
 }
 
 /// Tock default panic routine.
@@ -190,13 +221,11 @@ pub unsafe fn panic<L: hil::led::Led, W: Write + IoWrite, C: Chip, PP: ProcessPr
     writer: &mut W,
     panic_info: &PanicInfo,
     nop: &dyn Fn(),
-    processes: &'static [ProcessSlot],
-    chip: &'static Option<&'static C>,
-    process_printer: &'static Option<&'static PP>,
+    panic_resources: Option<&PanicResources<C, PP>>,
 ) -> ! {
     // Call `panic_print` first which will print out the panic information and
     // return
-    panic_print(writer, panic_info, nop, processes, chip, process_printer);
+    panic_print(writer, panic_info, nop, panic_resources);
 
     // The system is no longer in a well-defined state, we cannot
     // allow this function to return
@@ -245,11 +274,8 @@ pub unsafe fn panic_banner<W: Write>(writer: &mut W, panic_info: &PanicInfo) {
 /// Print current machine (CPU) state.
 ///
 /// **NOTE:** The supplied `writer` must be synchronous.
-pub unsafe fn panic_cpu_state<W: Write, C: Chip>(
-    chip: &'static Option<&'static C>,
-    writer: &mut W,
-) {
-    C::print_state(*chip, writer);
+pub unsafe fn panic_cpu_state<W: Write, C: Chip>(chip: Option<&'static C>, writer: &mut W) {
+    C::print_state(chip, writer);
 }
 
 /// More detailed prints about all processes.
@@ -257,7 +283,7 @@ pub unsafe fn panic_cpu_state<W: Write, C: Chip>(
 /// **NOTE:** The supplied `writer` must be synchronous.
 pub unsafe fn panic_process_info<PP: ProcessPrinter, W: Write>(
     processes: &'static [ProcessSlot],
-    process_printer: &'static Option<&'static PP>,
+    process_printer: Option<&'static PP>,
     writer: &mut W,
 ) {
     process_printer.map(|printer| {
@@ -292,19 +318,29 @@ pub unsafe fn panic_process_info<PP: ProcessPrinter, W: Write>(
 /// appropriate to blink multiple LEDs (e.g. one on the top and one on the
 /// bottom), thus this method accepts an array, however most will only need one.
 pub fn panic_blink_forever<L: hil::led::Led>(leds: &mut [&L]) -> ! {
-    leds.iter_mut().for_each(|led| led.init());
+    for led in leds.iter_mut() {
+        led.init();
+    }
     loop {
         for _ in 0..1000000 {
-            leds.iter_mut().for_each(|led| led.on());
+            for led in leds.iter_mut() {
+                led.on();
+            }
         }
         for _ in 0..100000 {
-            leds.iter_mut().for_each(|led| led.off());
+            for led in leds.iter_mut() {
+                led.off();
+            }
         }
         for _ in 0..1000000 {
-            leds.iter_mut().for_each(|led| led.on());
+            for led in leds.iter_mut() {
+                led.on();
+            }
         }
         for _ in 0..500000 {
-            leds.iter_mut().for_each(|led| led.off());
+            for led in leds.iter_mut() {
+                led.off();
+            }
         }
     }
 }
@@ -315,22 +351,35 @@ pub fn panic_blink_forever<L: hil::led::Led>(leds: &mut [&L]) -> ! {
 ///////////////////////////////////////////////////////////////////
 // debug_gpio! support
 
-/// Object to hold the assigned debugging GPIOs.
-pub static mut DEBUG_GPIOS: (
-    Option<&'static dyn hil::gpio::Pin>,
-    Option<&'static dyn hil::gpio::Pin>,
-    Option<&'static dyn hil::gpio::Pin>,
-) = (None, None, None);
+/// Static variable that holds an array of debug GPIO references.
+pub static DEBUG_GPIOS: SingleThreadValue<MapCell<&'static [&'static dyn hil::gpio::Pin]>> =
+    SingleThreadValue::new(MapCell::empty());
 
-/// Map up to three GPIO pins to use for debugging.
-pub unsafe fn assign_gpios(
-    gpio0: Option<&'static dyn hil::gpio::Pin>,
-    gpio1: Option<&'static dyn hil::gpio::Pin>,
-    gpio2: Option<&'static dyn hil::gpio::Pin>,
-) {
-    DEBUG_GPIOS.0 = gpio0;
-    DEBUG_GPIOS.1 = gpio1;
-    DEBUG_GPIOS.2 = gpio2;
+/// Initialize the static debug gpio variable.
+///
+/// This ensures it can safely be used as a global variable.
+#[cfg(target_has_atomic = "ptr")]
+pub fn initialize_debug_gpio<P: ThreadIdProvider>() {
+    DEBUG_GPIOS.bind_to_thread::<P>();
+}
+
+/// Initialize the static debug gpio variable.
+///
+/// This ensures it can safely be used as a global variable.
+///
+/// # Safety
+///
+/// Callers of this function must ensure that this function is never called
+/// concurrently with other calls to [`initialize_debug_gpio_unsafe`].
+pub unsafe fn initialize_debug_gpio_unsafe<P: ThreadIdProvider>() {
+    DEBUG_GPIOS.bind_to_thread_unsafe::<P>();
+}
+
+/// Map an array of GPIO pins to use for debugging.
+pub fn assign_gpios(gpio: &'static [&'static dyn hil::gpio::Pin]) {
+    DEBUG_GPIOS.get().map(|gpio_array_cell| {
+        gpio_array_cell.replace(gpio);
+    });
 }
 
 /// In-kernel gpio debugging that accepts any GPIO HIL method.
@@ -339,7 +388,11 @@ macro_rules! debug_gpio {
     ($i:tt, $method:ident $(,)?) => {{
         #[allow(unused_unsafe)]
         unsafe {
-            $crate::debug::DEBUG_GPIOS.$i.map(|g| g.$method());
+            $crate::debug::DEBUG_GPIOS.get().map(|debug_gpio_cell| {
+                debug_gpio_cell.map(|debug_gpio_array| {
+                    debug_gpio_array.get($i).map(|g| g.$method());
+                });
+            });
         }
     }};
 }
