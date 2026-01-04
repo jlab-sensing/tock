@@ -24,7 +24,7 @@ use kernel::component::Component;
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Alarm;
 use kernel::hil::time::Counter;
-use kernel::hil::uart::Transmit;
+use kernel::hil::uart::{Transmit,Receive};
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::{create_capability, debug, static_init};
@@ -33,6 +33,7 @@ use stm32wle5jc::clocks::msi::MSI_FREQUENCY_MHZ;
 use stm32wle5jc::gpio::{PinId, PortId};
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
+use kernel::hil::sdi12::{Transmit as Sdi12Transmit, Receive as Sdi12Receive};
 
 /// Support routines for debugging I/O.
 pub mod io;
@@ -557,6 +558,7 @@ pub unsafe fn main() {
     virtual_alarm.set_alarm_client(sdi12_driver);
     //uart_device.set_transmit_client(sdi12_driver);
     base_peripherals.usart2.set_transmit_client(sdi12_driver);
+    base_peripherals.usart2.set_receive_client(sdi12_driver);
 
     let sdi12_grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
     let sdi12_driver_process_grant =
@@ -578,6 +580,8 @@ pub unsafe fn main() {
             sdi12_driver_process_grant
         ),
     );
+    sdi12_driver.set_transmit_client(sdi12_ents);
+    sdi12_driver.set_receive_client(sdi12_ents);
 
     let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
         scheduler,
