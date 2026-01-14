@@ -667,6 +667,12 @@ impl<'a> hil::uart::Receive<'a> for Usart<'a> {
         rx_buffer: &'static mut [u8],
         rx_len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
+        // flush any overrun data and clear ORE flag 
+        while self.registers.isr.is_set(ISR::RXNE) {
+            let _ = self.registers.rdr.get();
+        }
+        self.registers.icr.modify(ICR::ORECF::SET);
+        
         if self.rx_status.get() == USARTStateRX::Idle {
             if rx_len <= rx_buffer.len() {
                 self.rx_buffer.put(Some(rx_buffer));
