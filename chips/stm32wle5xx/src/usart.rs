@@ -460,29 +460,30 @@ impl<'a> Usart<'a> {
 
         if self.registers.isr.is_set(ISR::RXNE) {
             let byte = self.registers.rdr.get() as u8;
-            self.disable_receive_interrupt();
 
             // ignore IRQ if not receiving
             if self.rx_status.get() == USARTStateRX::Receiving {
                 if self.rx_position.get() < self.rx_len.get() {
                     self.rx_buffer.map(|buf| {
                         buf[self.rx_position.get()] = byte;
-                        self.rx_position.replace(self.rx_position.get() + 1);
                     });
+                    self.rx_position.set(self.rx_position.get() + 1);
                 }
-                if self.rx_position.get() == self.rx_len.get() {
-                    // reception done
-                    self.rx_status.replace(USARTStateRX::Idle);
-                } else {
-                    self.enable_receive_interrupt();
-                }
-                // notify client if transfer is done
-                if self.rx_status.get() == USARTStateRX::Idle {
+
+                // Completion conditions:
+                // 1) buffer full, OR
+                // 2) SDI-12 line complete on '\n'
+                let done = self.rx_position.get() == self.rx_len.get() || byte == b'\n';
+
+                if done {
+                    self.rx_status.set(USARTStateRX::Idle);
+                    self.disable_receive_interrupt();
+
                     self.rx_client.map(|client| {
                         if let Some(buf) = self.rx_buffer.take() {
                             client.received_buffer(
                                 buf,
-                                self.rx_len.get(),
+                                self.rx_position.get(),   // pass actual received length
                                 Ok(()),
                                 hil::uart::Error::None,
                             );
