@@ -22,9 +22,10 @@ use components::gpio::GpioComponent;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::hil::led::LedLow;
+use kernel::hil::sdi12::{Receive as Sdi12Receive, Transmit as Sdi12Transmit};
 use kernel::hil::time::Alarm;
 use kernel::hil::time::Counter;
-use kernel::hil::uart::{Transmit,Receive};
+use kernel::hil::uart::{Receive, Transmit};
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::{create_capability, debug, static_init};
@@ -33,7 +34,6 @@ use stm32wle5jc::clocks::msi::MSI_FREQUENCY_MHZ;
 use stm32wle5jc::gpio::{PinId, PortId};
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
-use kernel::hil::sdi12::{Transmit as Sdi12Transmit, Receive as Sdi12Receive};
 
 /// Support routines for debugging I/O.
 pub mod io;
