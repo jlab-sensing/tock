@@ -483,7 +483,7 @@ impl<'a> Usart<'a> {
                         if let Some(buf) = self.rx_buffer.take() {
                             client.received_buffer(
                                 buf,
-                                self.rx_position.get(),   // pass actual received length
+                                self.rx_position.get(), // pass actual received length
                                 Ok(()),
                                 hil::uart::Error::None,
                             );
