@@ -309,6 +309,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "earlgrey-cw310"
+version = "0.2.3-dev"
+dependencies = [
+ "capsules-aes-gcm",
+ "capsules-core",
+ "capsules-extra",
+ "capsules-system",
+ "components",
+ "earlgrey",
+ "kernel",
+ "lowrisc",
+ "rv32i",
+ "tock-tbf",
+ "tock_build_scripts",
+]
+
+[[package]]
 name = "ecdsa"
 version = "0.16.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"

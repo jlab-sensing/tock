@@ -128,44 +128,6 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> Sdi12Ents<'a, S> {
 
     /**
      ******************************************************************************
-     * @brief    Send a command via SDI12
-     *
-     * @param    self,
-     * @param    str, command
-     * @return   Sdi12Status
-     ******************************************************************************
-     */
-    // pub fn sdi12_send_command(
-    //     &self,
-    //     processid: ProcessId,
-    //     command: usize,
-    //     size: usize,
-    // ) -> Result<Sdi12Status, Sdi12Status> {
-    //     self.state.set(State::SendingCommand);
-    //     self.tx_in_progress.set(processid);
-    //     let mut command_bytes: [u8; 4] = [0; 4];
-    //     for i in 0..size {
-    //         // Convert usize to u8 and store in buffer
-    //         command_bytes[i] = (command >> (8 * (size - 1 - i))) as u8;
-    //     }
-
-    //     // let command_bytes = command.as_bytes();
-    //     // let len = size.min(command.len()); // prevent overflow
-    //     let buffer = self.tx_buffer.take().unwrap();
-    //     buffer[..size].copy_from_slice(&command_bytes[..size]);
-    //     debug!("Beginning capsule call of SDI12 driver");
-    //     let status_result = self.sdi12.transmit(buffer, size);
-    //     match status_result {
-    //         Ok(()) => Ok(Sdi12Status::Sdi12Ok),
-    //         Err(_) => {
-    //             self.tx_in_progress.clear();  // clear if error
-    //             Err(Sdi12Status::Sdi12Error)
-    //         }
-    //     }
-    // }
-
-    /**
-     ******************************************************************************
      * @brief    Send data previously copied into tx_buffer
      *
      * @param    self,
