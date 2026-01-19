@@ -69,9 +69,9 @@ pub fn parse_tbf_header_lengths(
 /// should use the `parse_tbf_header_lengths()` function to determine this
 /// length to create the correct sized slice.
 pub fn parse_tbf_header(
-    header: &'static [u8],
+    header: &[u8],
     version: u16,
-) -> Result<types::TbfHeader, types::TbfParseError> {
+) -> Result<types::TbfHeader<'_>, types::TbfParseError> {
     match version {
         2 => {
             // Get the required base. This will succeed because we parsed the
@@ -122,11 +122,11 @@ pub fn parse_tbf_header(
                 // options.
                 let mut main_pointer: Option<types::TbfHeaderV2Main> = None;
                 let mut program_pointer: Option<types::TbfHeaderV2Program> = None;
-                let mut wfr_pointer: Option<&'static [u8]> = None;
+                let mut wfr_pointer: Option<&[u8]> = None;
                 let mut app_name_str = "";
-                let mut fixed_address_pointer: Option<&'static [u8]> = None;
-                let mut permissions_pointer: Option<&'static [u8]> = None;
-                let mut storage_permissions_pointer: Option<&'static [u8]> = None;
+                let mut fixed_address_pointer: Option<&[u8]> = None;
+                let mut permissions_pointer: Option<&[u8]> = None;
+                let mut storage_permissions_pointer: Option<&[u8]> = None;
                 let mut kernel_version: Option<types::TbfHeaderV2KernelVersion> = None;
                 let mut short_id: Option<types::TbfHeaderV2ShortId> = None;
 
@@ -181,9 +181,10 @@ pub fn parse_tbf_header(
                         }
                         types::TbfHeaderTypes::TbfHeaderWriteableFlashRegions => {
                             // Length must be a multiple of the size of a region definition.
-                            if tlv_header.length as usize
-                                % mem::size_of::<types::TbfHeaderV2WriteableFlashRegion>()
-                                == 0
+                            if (tlv_header.length as usize)
+                                .is_multiple_of(mem::size_of::<
+                                    types::TbfHeaderV2WriteableFlashRegion,
+                                >())
                             {
                                 // Capture a slice with just the wfr information.
                                 let wfr_slice = remaining

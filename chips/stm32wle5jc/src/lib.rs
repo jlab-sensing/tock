@@ -1,14 +1,17 @@
+// Licensed under the Apache License, Version 2.0 or the MIT License.
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// Copyright Tock Contributors 2025.
+
 #![no_std]
 
-pub use stm32wle5xx::{chip, clocks, gpio, i2c, nvic, rcc, sdi12, spi, subghz_radio, tim2, usart};
+pub use stm32wle5xx::{
+    chip, clocks, exti, gpio, i2c, nvic, rcc, sdi12, spi, subghz_radio, syscfg, tim2, usart,
+};
 
 pub mod chip_specs;
 pub mod interrupt_service;
 use cortexm4::{unhandled_interrupt, CortexM4, CortexMVariant};
 
-// STM32F446xx has total of 97 interrupts
-// Extracted from `CMSIS/Device/ST/STM32F4xx/Include/stm32f446xx.h`
-// NOTE: There are missing IRQn between 0 and 96
 #[cfg_attr(all(target_arch = "arm", target_os = "none"), link_section = ".irqs")]
 // `used` ensures that the symbol is kept until the final binary. However, as of
 // May 2020, due to the compilation process, there must be some other compiled

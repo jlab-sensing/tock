@@ -1,52 +1,17 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright OxidOS Automotive SRL.
-//
-// Author: Ioan-Cristian CÎRSTEA <ioan.cirstea@oxidos.io>
+// Copyright Tock Contributors 2025.
 
-//! HSI (high-speed internal) clock driver for the STM32F4xx family. [^doc_ref]
+//! The clock module for STM32WLE5xx chips.
 //!
-//! # Usage
-//!
-//! For the purposes of brevity, any error checking has been removed. In real applications, always
-//! check the return values of the [Hsi] methods.
-//!
-//! First, get a reference to the [Hsi] struct:
-//! ```rust,ignore
-//! let hsi = &peripherals.stm32f4.clocks.hsi;
-//! ```
-//!
-//! ## Start the clock
-//!
-//! ```rust,ignore
-//! hsi.enable();
-//! ```
-//!
-//! ## Stop the clock
-//!
-//! ```rust,ignore
-//! hsi.disable();
-//! ```
-//!
-//! ## Check if the clock is enabled
-//! ```rust,ignore
-//! if hsi.is_enabled() {
-//!     /* Do something */
-//! } else {
-//!     /* Do something */
-//! }
-//! ```
-//!
-//! ## Get the frequency of the clock
-//! ```rust,ignore
-//! let hsi_frequency_mhz = hsi.get_frequency().unwrap();
-//! ```
-//!
-//! [^doc_ref]: See 6.2.2 in the documentation.
+//! This is highly similar to the one for STM32L4xx chips. This clock
+//! implementation provides the minimal functionality required to enable
+//! peripherals and configure speeds (as tested for I2C and UART). This
+//! is still highly a work in progress and documentation comments here
+//! describing the usage will be updated as development continues.
 
 use crate::rcc::Rcc;
 
-use kernel::debug;
 use kernel::ErrorCode;
 
 /// HSI frequency in MHz
@@ -134,61 +99,5 @@ impl<'a> Hsi<'a> {
         } else {
             None
         }
-    }
-}
-
-/// Tests for the HSI clock
-///
-/// This module ensures that the HSI clock works as expected. If changes are brought to the HSI
-/// clock, ensure to run all the tests to see if anything is broken.
-///
-/// # Usage
-///
-/// First, import the [crate::clocks::hsi] module in the desired board main file:
-///
-/// ```rust,ignore
-/// use stm32f429zi::clocks::hsi;
-/// ```
-///
-/// Then, to run the tests, put the following line before [kernel::process::load_processes]:
-///
-/// ```rust,ignore
-/// hsi::tests::run(&peripherals.stm32f4.clocks.hsi);
-/// ```
-///
-/// If everything works as expected, the following message should be printed on the kernel console:
-///
-/// ```text
-/// ===============================================
-/// Testing HSI...
-/// Finished testing HSI. Everything is alright!
-/// ===============================================
-/// ```
-///
-/// **NOTE:** All these tests assume default boot configuration.
-pub mod tests {
-    use super::*;
-
-    /// Run the entire test suite.
-    pub fn run(hsi: &Hsi) {
-        debug!("");
-        debug!("===============================================");
-        debug!("Testing HSI...");
-
-        // By default, the HSI clock is enabled
-        assert!(hsi.is_enabled());
-
-        // HSI frequency is 16MHz
-        assert_eq!(Some(HSI_FREQUENCY_MHZ), hsi.get_frequency_mhz());
-
-        // Nothing should happen if the HSI clock is being enabled when already running
-        assert_eq!(Ok(()), hsi.enable());
-
-        // Impossible to disable the HSI clock since it is the system clock source
-        assert_eq!(Err(ErrorCode::FAIL), hsi.disable());
-
-        debug!("Finished testing HSI. Everything is alright!");
-        debug!("===============================================");
-        debug!("");
     }
 }

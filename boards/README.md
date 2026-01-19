@@ -15,7 +15,7 @@ but the approximate definitions:
  - **Tier 2:** Platforms seeing reasonably regular use. These generally
                have broader, but still incomplete, peripheral support.
                They may also be 'relatives' of Tier 1 boards (e.g. a
-               less-used varient in the nrf52 family) – likely in good
+               less-used variant in the nrf52 family) – likely in good
                shape, but not heavily tested. Some Tier 2 boards may
                have known issues, which are documented in release notes
                during release testing.
@@ -97,6 +97,7 @@ but the approximate definitions:
 | [Digilent Arty A-7 100T](arty_e21/README.md)                      | RISC-V RV32IMAC  | SiFive E21     | openocd    | tockloader                  | No            |
 | [MSP432 Evaluation kit MSP432P401R](msp_exp432p401r/README.md)    | ARM Cortex-M4    | MSP432P401R    | openocd    | custom                      | No            |
 | [CY8CPROTO-062-4343W](cy8cproto_62_4343_w/README.md)              | ARM Cortex-M0+   | PSoC62         | openocd    | custom                      | No            |
+| [Raspberry Pi Pico 2](raspberry_pi_pico_2/README.md)              | ARM Cortex-M33   | RP2350         | openocd    | openocd                     | No            |
 
 
 ### Other
@@ -115,7 +116,8 @@ Virtual hardware platforms that are regularly tested as part of the CI.
 | [LiteX on Digilent Arty A-7](litex/arty/README.md)                | RISC-V RV32IMC   | LiteX+VexRiscV | custom     | tockloader (flash-file)[^1] | No            |
 | [Verilated LiteX Simulation](litex/sim/README.md)                 | RISC-V RV32IMC   | LiteX+VexRiscv | custom     | tockloader (flash-file)[^1] | No            |
 | [VeeR EL2 simulation](veer_el2_sim/README.md)                     | RISC-V RV32IMC   | VeeR EL2       | custom     | custom                      | No            |
-
+| [QEMU i486 Q53](qemu_i486_q35/README.md)                          | i468             | Q35            | custom     | custom                      | Yes           |
+| [Seeed Studio LoRa E5 Mini](seeed_studio_lora_e5_mini/README.md)  | ARM Cortex-M4    | STM32WLE5JC    | openocd    | tockloader                  | No            |
 [^1]: Tockloader is not able to interact with this board directly, but
       can be used to work on a flash-image of the board, which can in
       turn be flashed onto / read from the board. For more specific

@@ -763,7 +763,7 @@ pub fn decompress(
                 // Length in 8-octet units after the first 8 octets
                 // (per the IPv6 ext hdr spec)
                 let mut hdr_len_field = (len - 6) / 8;
-                if (len - 6) % 8 != 0 {
+                if !(len - 6).is_multiple_of(8) {
                     hdr_len_field += 1;
                 }
 
@@ -975,7 +975,7 @@ fn decompress_multicast(
             iphc::DAM_INLINE => {
                 // DAC = 1, DAM = 00: 48 bits
                 // ffXX:XXLL:PPPP:PPPP:PPPP:PPPP:XXXX:XXXX
-                let prefix_bytes = ((ctx.prefix_len + 7) / 8) as usize;
+                let prefix_bytes = ctx.prefix_len.div_ceil(8) as usize;
                 if prefix_bytes > 8 {
                     // The maximum prefix length for this mode is 64 bits.
                     // If the specified prefix exceeds this length, the

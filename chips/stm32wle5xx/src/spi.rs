@@ -1,6 +1,6 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
+// Copyright Tock Contributors 2025.
 
 use core::cell::Cell;
 use core::cmp;
@@ -184,12 +184,6 @@ const SPI1_BASE: StaticRef<SpiRegisters> =
 const SUBGHZSPI: StaticRef<SpiRegisters> =
     unsafe { StaticRef::new(0x5801_0000 as *const SpiRegisters) };
 
-// const SPI2_BASE: StaticRef<SpiRegisters> =
-//     unsafe { StaticRef::new(0x4000_3800 as *const SpiRegisters) };
-
-// const SPI3_BASE: StaticRef<SpiRegisters> =
-//     unsafe { StaticRef::new(0x4000_3C00 as *const SpiRegisters) };
-
 pub struct Spi<'a> {
     registers: StaticRef<SpiRegisters>,
     clock: SpiClock<'a>,
@@ -274,7 +268,6 @@ impl<'a> Spi<'a> {
     }
 
     pub fn handle_interrupt(&self) {
-        // kernel::debug!("spi handle_interrupt");
         if self.registers.sr.is_set(SR::TXE) {
             // kernel::debug!("spi TXE interrupt");
             if self.tx_buffer.is_some() && self.tx_position.get() < self.len.get() {
@@ -292,7 +285,6 @@ impl<'a> Spi<'a> {
         }
 
         if self.registers.sr.is_set(SR::RXNE) {
-            // kernel::debug!("spi RXNE interrupt");
             while self.registers.sr.read(SR::FRLVL) > 0 {
                 let byte = self.registers.dr.read(DR::DR);
                 if self.rx_buffer.is_some() && self.rx_position.get() < self.len.get() {
@@ -385,10 +377,6 @@ impl<'a> Spi<'a> {
             Option<SubSliceMut<'static, u8>>,
         ),
     > {
-        // kernel::debug!(
-        //     "spi read_write_bytes write buf: {:0x?}",
-        //     write_buffer.as_slice()
-        // );
         if self.transfers.get() == 0 {
             self.registers.cr2.modify(CR2::RXNEIE::CLEAR);
             self.nss.map(|nss| {
@@ -466,7 +454,6 @@ impl<'a> spi::SpiMaster<'a> for Spi<'a> {
     }
 
     fn write_byte(&self, out_byte: u8) -> Result<(), ErrorCode> {
-        // debug! ("spi write byte {}", out_byte);
         // loop till TXE (Transmit Buffer Empty) becomes 1
         while !self.registers.sr.is_set(SR::TXE) {}
 
@@ -512,12 +499,7 @@ impl<'a> spi::SpiMaster<'a> for Spi<'a> {
     }
 
     /// (TODO) Need to fix / update the baud rate calc here.
-    fn set_rate(&self, rate: u32) -> Result<u32, ErrorCode> {
-        // debug! ("stm32f3 spi set rate");
-        // if rate != 1_000_000 {
-        //     return Err(ErrorCode::INVAL);
-        // }
-
+    fn set_rate(&self, _rate: u32) -> Result<u32, ErrorCode> {
         self.set_cr(|| {
             // HSI is 8Mhz and Fpclk is also 8Mhz. 0b111 is Fpclk / 256 = 31.25KHz
             self.registers.cr1.modify(CR1::BR.val(0b111));

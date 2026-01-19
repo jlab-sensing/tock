@@ -144,9 +144,7 @@ impl<'a, Can: can::Can> CanCapsule<'a, Can> {
     fn schedule_callback(&self, callback_number: usize, data: (usize, usize, usize)) {
         self.processid.map(|processid| {
             let _ = self.processes.enter(processid, |_app, kernel_data| {
-                kernel_data
-                    .schedule_upcall(callback_number, (data.0, data.1, data.2))
-                    .ok();
+                let _ = kernel_data.schedule_upcall(callback_number, (data.0, data.1, data.2));
             });
         });
     }
@@ -493,7 +491,7 @@ impl<Can: can::Can> can::ReceiveClient<{ can::STANDARD_CAN_PACKET_SIZE }> for Ca
                     (error_upcalls::ERROR_RX, kernel_err.into(), 0),
                 )
             }
-        };
+        }
     }
 
     fn stopped(&self, buffer: &'static mut [u8; can::STANDARD_CAN_PACKET_SIZE]) {

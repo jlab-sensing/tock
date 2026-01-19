@@ -13,9 +13,6 @@ use kernel::hil::uart::{self};
 use kernel::ErrorCode;
 use nrf52840::gpio::Pin;
 
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
 use kernel::hil::uart::Transmit;
 use kernel::utilities::cells::VolatileCell;
 
@@ -126,7 +123,6 @@ impl IoWrite for Writer {
 ///
 /// We just use the standard default provided by the debug module in the kernel.
 #[cfg(not(test))]
-#[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     let led_kernel_pin = &nrf52840::gpio::GPIOPin::new(Pin::P0_13);
@@ -137,8 +133,6 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         writer,
         pi,
         &cortexm4::support::nop,
-        &*addr_of!(PROCESSES),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     )
 }

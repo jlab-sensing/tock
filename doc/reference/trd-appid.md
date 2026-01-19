@@ -9,7 +9,7 @@ Application IDs (AppID), Credentials, and Process Loading
 **Draft-Created:** 2021/09/01 <br/>
 **Draft-Modified:** 2022/10/14 <br/>
 **Draft-Version:** 10 <br/>
-**Draft-Discuss:** tock-dev@googlegroups.com<br/>
+**Draft-Discuss:** devel@lists.tockos.org<br/>
 
 Abstract
 -------------------------------
@@ -955,7 +955,7 @@ Stanford, CA 94305
 USA
 pal@cs.stanford.edu
 
-Johnathan Van Why <jrvanwhy@google.com>
+Johnathan Van Why <tock@jrvanwhy.net>
 
 Brad Campbell <bradjc@virginia.edu>
 ```

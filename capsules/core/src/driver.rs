@@ -26,6 +26,8 @@ pub enum NUM {
 
     // Kernel
     Ipc                   = 0x10000,
+    AppLoader             = 0x10001,
+    ProcessInfo           = 0x10002,
 
     // HW Buses
     Spi                   = 0x20001,
@@ -59,6 +61,7 @@ pub enum NUM {
     NvmStorage            = 0x50001,
     SdCard                = 0x50002,
     Kv                    = 0x50003,
+    IsolatedNvmStorage    = 0x50004,
 
     // Sensors
     Temperature           = 0x60000,

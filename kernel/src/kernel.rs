@@ -26,6 +26,7 @@ use crate::platform::platform::KernelResources;
 use crate::platform::platform::{ProcessFault, SyscallDriverLookup, SyscallFilter};
 use crate::platform::scheduler_timer::SchedulerTimer;
 use crate::platform::watchdog::WatchDog;
+use crate::process::ProcessSlot;
 use crate::process::{self, ProcessId, Task};
 use crate::scheduler::{Scheduler, SchedulingDecision};
 use crate::syscall::SyscallDriver;
@@ -43,7 +44,7 @@ pub(crate) const MIN_QUANTA_THRESHOLD_US: u32 = 500;
 /// Main object for the kernel. Each board will need to create one.
 pub struct Kernel {
     /// This holds a pointer to the static array of Process pointers.
-    processes: &'static [Option<&'static dyn process::Process>],
+    processes: &'static [ProcessSlot],
 
     /// A counter which keeps track of how many process identifiers have been
     /// created. This is used to create new unique identifiers for processes.
@@ -87,7 +88,7 @@ impl Kernel {
     /// Crucially, the processes included in the `processes` array MUST be valid
     /// to execute. Any credential checks or validation MUST happen before the
     /// `Process` object is included in this array.
-    pub fn new(processes: &'static [Option<&'static dyn process::Process>]) -> Kernel {
+    pub const fn new(processes: &'static [ProcessSlot]) -> Kernel {
         Kernel {
             processes,
             process_identifier_max: Cell::new(0),
@@ -103,18 +104,12 @@ impl Kernel {
         // However, we are not guaranteed that the app still exists at that
         // index in the processes array. To avoid additional overhead, we do the
         // lookup and check here, rather than calling `.index()`.
-        match self.processes.get(processid.index) {
-            Some(Some(process)) => {
-                // Check that the process stored here matches the identifier
-                // in the `processid`.
-                if process.processid() == processid {
-                    Some(*process)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
+        self.processes
+            .get(processid.index)
+            .and_then(|pslot| pslot.get())
+            // Check that the process stored here matches the
+            // identifier in the `processid`.
+            .filter(|process| process.processid() == processid)
     }
 
     /// Run a closure on a specific process if it exists. If the process with a
@@ -169,33 +164,28 @@ impl Kernel {
 
     /// Run a closure on every valid process. This will iterate the array of
     /// processes and call the closure on every process that exists.
-    pub(crate) fn process_each<F>(&self, mut closure: F)
+    pub(crate) fn process_each<F>(&self, closure: F)
     where
         F: FnMut(&dyn process::Process),
     {
-        for process in self.processes.iter() {
-            match process {
-                Some(p) => {
-                    closure(*p);
-                }
-                None => {}
-            }
-        }
+        self.get_process_iter().for_each(closure);
+    }
+
+    pub fn process_iter_capability(
+        &self,
+        _capability: &dyn capabilities::ProcessManagementCapability,
+    ) -> impl Iterator<Item = &dyn process::Process> {
+        self.get_process_iter()
     }
 
     /// Returns an iterator over all processes loaded by the kernel.
     pub(crate) fn get_process_iter(
         &self,
     ) -> core::iter::FilterMap<
-        core::slice::Iter<Option<&dyn process::Process>>,
-        fn(&Option<&'static dyn process::Process>) -> Option<&'static dyn process::Process>,
+        core::slice::Iter<'_, ProcessSlot>,
+        fn(&ProcessSlot) -> Option<&'static dyn process::Process>,
     > {
-        fn keep_some(
-            &x: &Option<&'static dyn process::Process>,
-        ) -> Option<&'static dyn process::Process> {
-            x
-        }
-        self.processes.iter().filter_map(keep_some)
+        self.processes.iter().filter_map(ProcessSlot::get)
     }
 
     /// Run a closure on every valid process. This will iterate the array of
@@ -207,18 +197,11 @@ impl Kernel {
     pub fn process_each_capability<F>(
         &'static self,
         _capability: &dyn capabilities::ProcessManagementCapability,
-        mut closure: F,
+        closure: F,
     ) where
         F: FnMut(&dyn process::Process),
     {
-        for process in self.processes.iter() {
-            match process {
-                Some(p) => {
-                    closure(*p);
-                }
-                None => {}
-            }
-        }
+        self.process_each(closure);
     }
 
     /// Run a closure on every process, but only continue if the closure returns
@@ -228,15 +211,10 @@ impl Kernel {
     where
         F: Fn(&dyn process::Process) -> Option<T>,
     {
-        for process in self.processes.iter() {
-            match process {
-                Some(p) => {
-                    let ret = closure(*p);
-                    if ret.is_some() {
-                        return ret;
-                    }
-                }
-                None => {}
+        for process in self.get_process_iter() {
+            let ret = closure(process);
+            if ret.is_some() {
+                return ret;
             }
         }
         None
@@ -251,7 +229,7 @@ impl Kernel {
     pub(crate) fn processid_is_valid(&self, processid: &ProcessId) -> bool {
         self.processes
             .get(processid.index)
-            .is_some_and(|p| p.is_some_and(|process| process.processid().id() == processid.id()))
+            .is_some_and(|p| p.contains_process_with_id(processid.id()))
     }
 
     /// Create a new grant. This is used in board initialization to setup grants
@@ -323,6 +301,19 @@ impl Kernel {
         self.process_identifier_max.get_and_increment()
     }
 
+    /// Find the next slot that is available for storing a new [`&Process`]
+    /// (Process).
+    ///
+    /// Returns `Err(())` if there are no available slots.
+    pub(crate) fn next_available_process_slot(&self) -> Result<(usize, &ProcessSlot), ()> {
+        for (index, slot) in self.processes.iter().enumerate() {
+            if slot.proc.get().is_none() {
+                return Ok((index, slot));
+            }
+        }
+        Err(())
+    }
+
     /// Cause all apps to fault.
     ///
     /// This will call `set_fault_state()` on each app, causing the app to enter
@@ -334,10 +325,8 @@ impl Kernel {
     /// function, since capsules should not be able to arbitrarily restart all
     /// apps.
     pub fn hardfault_all_apps<C: capabilities::ProcessManagementCapability>(&self, _c: &C) {
-        for p in self.processes.iter() {
-            p.map(|process| {
-                process.set_fault_state();
-            });
+        for process in self.get_process_iter() {
+            process.set_fault_state();
         }
     }
 
@@ -396,7 +385,7 @@ impl Kernel {
                             // the running test does not generate
                             // any interrupts.
                             if !no_sleep {
-                                chip.atomic(|| {
+                                chip.with_interrupts_disabled(|| {
                                     // Cannot sleep if interrupts are pending,
                                     // as on most platforms unhandled interrupts
                                     // will wake the device. Also, if the only
@@ -520,11 +509,9 @@ impl Kernel {
             }
 
             // Check if the scheduler wishes to continue running this process.
-            let continue_process = unsafe {
-                resources
-                    .scheduler()
-                    .continue_process(process.processid(), chip)
-            };
+            let continue_process = resources
+                .scheduler()
+                .continue_process(process.processid(), chip);
             if !continue_process {
                 return_reason = process::StoppedExecutingReason::KernelPreemption;
                 break;
@@ -548,12 +535,36 @@ impl Kernel {
                     resources
                         .context_switch_callback()
                         .context_switch_hook(process);
+
+                    // Configure the MPU for the process to run, and activate
+                    // it. With certain memory protection mechanisms such as
+                    // RISC-V ePMP, this will make all userspace-accessible
+                    // memory inaccessible to kernel mode. When switching back
+                    // to the kernel, we must first run `disable_app_mpu` before
+                    // attempting to access any userspace memory.
                     process.setup_mpu();
                     chip.mpu().enable_app_mpu();
+
                     scheduler_timer.arm();
                     let context_switch_reason = process.switch_to();
                     scheduler_timer.disarm();
-                    chip.mpu().disable_app_mpu();
+
+                    // Disable the application MPU. This is necessary on systems
+                    // like RISC-V ePMP, which makes userspace memory
+                    // inaccessible to kernel mode if memory protection is
+                    // active.
+                    //
+                    // # Safety
+                    //
+                    // This function is unsafe, as calling it before switching
+                    // to a process, without first re-enabling memory
+                    // protection, could allow an application to access
+                    // kernel-private memory. Invoking this function is safe
+                    // here, as we always call `enable_app_mpu` above before
+                    // switching back to a process.
+                    unsafe {
+                        chip.mpu().disable_app_mpu();
+                    }
 
                     // Now the process has returned back to the kernel. Check
                     // why and handle the process as appropriate.

@@ -4,12 +4,8 @@
 
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::ptr::addr_of;
 use core::ptr::addr_of_mut;
 
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
 use kernel::debug;
 use kernel::debug::IoWrite;
 use kernel::hil::led;
@@ -36,7 +32,6 @@ impl IoWrite for Writer {
 }
 
 /// Panic handler.
-#[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(info: &PanicInfo) -> ! {
     // just create a new pin reference here instead of using global
@@ -54,8 +49,6 @@ pub unsafe fn panic_fmt(info: &PanicInfo) -> ! {
         writer,
         info,
         &cortexm4::support::nop,
-        &*addr_of!(PROCESSES),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     )
 }

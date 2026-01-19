@@ -487,7 +487,7 @@ impl<'a> PsocPins<'a> {
         }
     }
 
-    pub fn get_pin(&self, searched_pin: PsocPin) -> &'a GpioPin {
+    pub fn get_pin(&self, searched_pin: PsocPin) -> &'a GpioPin<'_> {
         self.pins[searched_pin as usize].as_ref().unwrap()
     }
 
@@ -930,7 +930,7 @@ impl<'a> Interrupt<'a> for GpioPin<'a> {
             self.registers.ports[self.port]
                 .prt_intr_cfg
                 .modify(PRT_INTR_CFG::EDGE_SEL7.val(edge_value));
-        };
+        }
         let bitfield = match self.pin {
             0 => PRT_INTR::EDGE0,
             1 => PRT_INTR::EDGE1,

@@ -63,8 +63,8 @@ use kernel::{ErrorCode, ProcessId};
 
 /// ### `subscribe_num`
 ///
-/// - `0`: Subscribe to interrupts from all pins with interrupts enabled.
-///        The callback signature is `fn(pin_num: usize, pin_state: bool)`
+/// - `0`: Subscribe to interrupts from all pins with interrupts enabled. The
+///   callback signature is `fn(pin_num: usize, pin_state: bool)`
 const UPCALL_NUM: usize = 0;
 
 pub struct GPIO<'a, IP: gpio::InterruptPin<'a>> {
@@ -146,9 +146,8 @@ impl<'a, IP: gpio::InterruptPin<'a>> gpio::ClientWithValue for GPIO<'a, IP> {
 
             // schedule callback with the pin number and value
             self.apps.each(|_, _, upcalls| {
-                upcalls
-                    .schedule_upcall(UPCALL_NUM, (pin_num as usize, pin_state as usize, 0))
-                    .ok();
+                let _ =
+                    upcalls.schedule_upcall(UPCALL_NUM, (pin_num as usize, pin_state as usize, 0));
             });
         }
     }
@@ -164,14 +163,14 @@ impl<'a, IP: gpio::InterruptPin<'a>> SyscallDriver for GPIO<'a, IP> {
     ///
     /// Other data bytes:
     ///
-    ///   - `pin_config`: An internal resistor setting.
-    ///                   Set to `0` for a pull-up resistor.
-    ///                   Set to `1` for a pull-down resistor.
-    ///                   Set to `2` for none.
-    ///   - `irq_config`: Interrupt configuration setting.
-    ///                   Set to `0` to interrupt on either edge.
-    ///                   Set to `1` for rising edge.
-    ///                   Set to `2` for falling edge.
+    /// - `pin_config`: An internal resistor setting.
+    ///   - Set to `0` for a pull-up resistor.
+    ///   - Set to `1` for a pull-down resistor.
+    ///   - Set to `2` for none.
+    /// - `irq_config`: Interrupt configuration setting.
+    ///   - Set to `0` to interrupt on either edge.
+    ///   - Set to `1` for rising edge.
+    ///   - Set to `2` for falling edge.
     ///
     /// ### `command_num`
     ///

@@ -9,7 +9,7 @@ Kernel Serial Peripheral Interface (SPI) HIL
 **Draft-Created:** 2021/08/13 <br/>
 **Draft-Modified:** 2021/08/13 <br/>
 **Draft-Version:** 2 <br/>
-**Draft-Discuss:** tock-dev@googlegroups.com<br/>
+**Draft-Discuss:** devel@lists.tockos.org<br/>
 
 Abstract
 -------------------------------
@@ -137,14 +137,12 @@ is too small), `set_rate` MUST return `Err(INVAL)`.
 The relationship of phase and polarity follows the standard SPI
 specification[1]:
 
-+------------+------------------+-------------+----------------+----------------+
 |  Polarity  |      Phase       |  Idle Level |    Data Out    |     Data In    |
-+------------+------------------+-------------+----------------+----------------+
+|------------|------------------|-------------|----------------|----------------|
 |  IdleLow   |  SampleLeading   |     Low     |  Rising Edge   |  Falling Edge  |
 |  IdleLow   |  SampleTrailing  |     Low     |  Falling Edge  |  Rising Edge   |
 |  IdleHigh  |  SampleLeading   |     High    |  Rising Edge   |  Rising Edge   |
 |  IdleHigh  |  SampleTrailing  |     High    |  Falling Edge  |  Falling Edge  |
-+------------+------------------+-------------+----------------+----------------+
 
 If the SPI bus is in the middle an outstanding operation
 (`Controller::read_write_bytes` or `Peripheral::read_write_bytes`),

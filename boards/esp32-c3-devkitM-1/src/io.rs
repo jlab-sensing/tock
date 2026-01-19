@@ -4,14 +4,9 @@
 
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::ptr::addr_of;
 use core::str;
 use kernel::debug;
 use kernel::debug::IoWrite;
-
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
 
 struct Writer {}
 
@@ -36,24 +31,6 @@ impl IoWrite for Writer {
 
 /// Panic handler.
 #[cfg(not(test))]
-#[no_mangle]
-#[panic_handler]
-pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
-    use core::ptr::addr_of_mut;
-
-    let writer = &mut *addr_of_mut!(WRITER);
-
-    debug::panic_banner(writer, pi);
-    debug::panic_cpu_state(&*addr_of!(CHIP), writer);
-    debug::panic_process_info(&*addr_of!(PROCESSES), &*addr_of!(PROCESS_PRINTER), writer);
-
-    loop {
-        rv32i::support::nop();
-    }
-}
-
-#[cfg(test)]
-#[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     use core::ptr::addr_of_mut;
@@ -64,9 +41,26 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         writer,
         pi,
         &rv32i::support::nop,
-        &*addr_of!(PROCESSES),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
+    );
+
+    loop {
+        rv32i::support::nop();
+    }
+}
+
+#[cfg(test)]
+#[panic_handler]
+pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
+    use core::ptr::addr_of_mut;
+
+    let writer = &mut *addr_of_mut!(WRITER);
+
+    debug::panic_print(
+        writer,
+        pi,
+        &rv32i::support::nop,
+        crate::PANIC_RESOURCES.get(),
     );
 
     let _ = writeln!(writer, "{}", pi);

@@ -1,8 +1,6 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
-
-//! Named constants for NVIC ids shared across the stm32f4xx family of chips
+// Copyright Tock Contributors 2025.
 
 #![allow(non_upper_case_globals)]
 

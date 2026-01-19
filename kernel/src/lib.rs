@@ -95,7 +95,7 @@
 /// Kernel major version.
 ///
 /// This is compiled with the crate to enable for checking of compatibility with
-/// loaded apps. Both major and minor version constants are updated during a
+/// loaded apps. Major, minor and patch version constants are updated during a
 /// release.
 pub const KERNEL_MAJOR_VERSION: u16 = 2;
 /// Kernel minor version.
@@ -137,9 +137,14 @@ struct TockAttributesKernelVersion {
 /// More information on kernel attributes is
 /// [here](https://book.tockos.org/doc/kernel_attributes.html).
 ///
-/// This is inserted into a specific section that the linker script includes at
-/// the correct location to be included in the attributes.
-#[link_section = ".tock.attr.kernel_version"]
+/// This is inserted into a specific section (`.tock.attr.kernel_version`) that
+/// the linker script includes at the correct location to be included in the
+/// attributes.
+///
+/// When compiling for a macOS host, this section attribute is elided as it is
+/// incompatible with Mach-O objects and yields the following error: `mach-o
+/// section specifier requires a segment and section separated by a comma`.
+#[cfg_attr(not(target_os = "macos"), link_section = ".tock.attr.kernel_version")]
 #[used]
 static TOCK_ATTRIBUTES_KERNEL_VERSION: TockAttributesKernelVersion = TockAttributesKernelVersion {
     major: KERNEL_MAJOR_VERSION,
@@ -155,6 +160,7 @@ pub mod collections;
 pub mod component;
 pub mod debug;
 pub mod deferred_call;
+pub mod dynamic_binary_storage;
 pub mod errorcode;
 pub mod grant;
 pub mod hil;
@@ -173,6 +179,7 @@ pub mod utilities;
 mod config;
 mod kernel;
 mod memop;
+mod process_array;
 mod process_binary;
 mod process_loading;
 mod process_policies;
