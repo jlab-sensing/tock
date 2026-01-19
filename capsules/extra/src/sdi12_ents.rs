@@ -1,6 +1,7 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
+
 // Written by Stephen Taylor, UCSD, 2025
 
 //! Provides userspace with access to sdi12 enviormental sensors. Uses a command pin specific to ENTS hardware
@@ -22,21 +23,17 @@
 use capsules_core::driver;
 use core::cell::Cell;
 use kernel::debug;
-use kernel::errorcode::{into_statuscode, ErrorCode};
+use kernel::errorcode::ErrorCode;
 use kernel::grant::UpcallCount;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant};
 use kernel::hil::sdi12;
-use kernel::hil::sdi12::{ReceiveClient, TransmitClient};
+use kernel::hil::sdi12::TransmitClient;
 use kernel::processbuffer::ReadableProcessBuffer;
 use kernel::processbuffer::WriteableProcessBuffer;
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
 use kernel::ProcessId;
-const REQUEST_MEASURMENT_RESPONSE_SIZE: usize = 7;
-const MEASURMENT_RESPONSE_SIZE: usize = 30;
-const SERVICE_REQUEST_SIZE: usize = 3;
-const WAKE_SENSORS_INTERVAL_MS: u32 = 9;
 
 pub const DRIVER_NUM: usize = driver::NUM::Sdi12Ents as usize;
 
@@ -123,7 +120,7 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> Sdi12Ents<'a, S> {
             tx_buffer: TakeCell::new(tx_buffer),
             rx_buffer: TakeCell::new(rx_buffer),
             sdi12,
-            grant: grant,
+            grant,
             tx_in_progress: OptionalCell::empty(),
             rx_in_progress: OptionalCell::empty(),
         }
@@ -264,7 +261,7 @@ where
 
                 match len {
                     Ok(l) if l > 0 => match self.sdi12_send_from_buffer(l) {
-                        Ok(_) => CommandReturn::success(),
+                        Ok(()) => CommandReturn::success(),
                         Err(_) => {
                             self.tx_in_progress.clear();
                             CommandReturn::failure(ErrorCode::FAIL)
@@ -279,22 +276,15 @@ where
             2 => {
                 self.rx_in_progress.set(processid);
                 // test read data command
-                let read_buffer = data1;
                 let size = data2;
 
                 // start receive and record process
                 match self.sdi12_start_receive(size) {
-                    Ok(_) => return CommandReturn::success(),
-                    Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+                    Ok(_) => CommandReturn::success(),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
                 }
             }
-            3 => {
-                // Get measurement command
-                let get_measurement_cmd = data1;
-                let response_buffer = data2;
-
-                return CommandReturn::success();
-            }
+            3 => CommandReturn::success(),
             _ => CommandReturn::failure(ErrorCode::INVAL),
         }
     }
@@ -325,9 +315,7 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> TransmitClient for Sdi12En
                     Ok(()) => 0,
                     Err(e) => usize::from(e),
                 };
-                kernel_data
-                    .schedule_upcall(upcall::SDI12_TX, (ret_code, length, 0))
-                    .ok();
+                let _ = kernel_data.schedule_upcall(upcall::SDI12_TX, (ret_code, length, 0));
             });
         });
     }
@@ -348,9 +336,7 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> sdi12::ReceiveClient for S
         // Copy received data to userspace buffer
         self.rx_in_progress.map(|processid| {
             let _ = self.grant.enter(processid, |_app, kernel_data| {
-                if let Ok(mut user_buf) =
-                    kernel_data.get_readwrite_processbuffer(rw_allow::RX_BUFFER)
-                {
+                if let Ok(user_buf) = kernel_data.get_readwrite_processbuffer(rw_allow::RX_BUFFER) {
                     let _ = user_buf.mut_enter(|dest| {
                         let copy_len = length.min(dest.len());
                         for i in 0..copy_len {
@@ -372,9 +358,7 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> sdi12::ReceiveClient for S
                     Ok(()) => 0,
                     Err(e) => usize::from(e),
                 };
-                kernel_data
-                    .schedule_upcall(upcall::SDI12_RX, (ret_code, length, 0))
-                    .ok();
+                let _ = kernel_data.schedule_upcall(upcall::SDI12_RX, (ret_code, length, 0));
             });
         });
     }

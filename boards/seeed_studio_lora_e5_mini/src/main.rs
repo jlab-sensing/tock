@@ -15,10 +15,7 @@
 use core::ptr::addr_of_mut;
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
-use capsules_core::virtualizers::virtual_uart::UartDevice;
-use capsules_core::{gpio, led};
 use capsules_extra::sdi12_ents::Sdi12Ents;
-use components::gpio::GpioComponent;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::debug::PanicResources;
@@ -341,7 +338,7 @@ pub unsafe fn main() {
 
     let uart_device = static_init!(
         capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
-        capsules_core::virtualizers::virtual_uart::UartDevice::new(&uart_mux_2, true)
+        capsules_core::virtualizers::virtual_uart::UartDevice::new(uart_mux_2, true)
     );
     uart_device.setup();
 
@@ -519,8 +516,8 @@ pub unsafe fn main() {
             >,
         >,
         capsules_extra::sdi12_ents::Sdi12Ents::new(
-            &mut SDI12_TX_BUF,
-            &mut SDI12_RX_BUF,
+            unsafe { &mut *addr_of_mut!(SDI12_TX_BUF) },
+            unsafe { &mut *addr_of_mut!(SDI12_RX_BUF) },
             sdi12_driver,
             sdi12_driver_process_grant
         ),

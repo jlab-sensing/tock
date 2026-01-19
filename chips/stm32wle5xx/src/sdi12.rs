@@ -1,3 +1,7 @@
+// Licensed under the Apache License, Version 2.0 or the MIT License.
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+// Copyright Tock Contributors 2022.
+
 use kernel::hil::gpio::{Configure, Output};
 use kernel::hil::sdi12;
 use kernel::hil::time::{Alarm, AlarmClient, ConvertTicks};
@@ -160,7 +164,7 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> AlarmClient for Sdi12<'a, U, A> {
                     }
                 }
             }
-        };
+        }
     }
 }
 
