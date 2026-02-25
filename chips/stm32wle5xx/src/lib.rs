@@ -21,6 +21,7 @@ pub mod gpio;
 pub mod i2c;
 pub mod pwr;
 pub mod rcc;
+pub mod rtc;
 pub mod spi;
 pub mod subghz_radio;
 pub mod syscfg;
