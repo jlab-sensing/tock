@@ -4,6 +4,8 @@
 
 use core::cell::Cell;
 
+use kernel::debug;
+
 use kernel::hil;
 use kernel::hil::i2c::{self, Error, I2CHwMasterClient};
 use kernel::platform::chip::ClockInterface;
@@ -351,12 +353,19 @@ impl<'a> I2C<'a> {
     pub fn handle_event(&self) {
         // handle no acknowledge
         if self.registers.isr.is_set(ISR::NACKF) {
+            //debug!("NACK Set");
+
+            self.registers.icr.write(ICR::NACKCF::SET);
+            
+
+            self.stop();
             self.handle_error(Error::AddressNak);
             return;
         }
 
         // send next byte when TXIS is set
         if self.registers.isr.is_set(ISR::TXIS) {
+            //debug!("TXIS Set");
             // check data is available
             if self.buffer.is_some() && self.tx_position.get() < self.tx_len.get() {
                 // ready to send data
@@ -376,10 +385,12 @@ impl<'a> I2C<'a> {
         }
 
         if self.registers.isr.is_set(ISR::RXNE) {
+            //debug!("RXNE Set");
             let byte = self.registers.rxdr.read(RXDR::RXDATA) as u8;
             if self.buffer.is_some() && self.rx_position.get() < self.rx_len.get() {
                 self.buffer.map(|buf| {
                     buf[self.rx_position.get()] = byte;
+                    debug!("[k] read byte: {}", byte);
                     self.rx_position.set(self.rx_position.get() + 1);
                 });
             }
@@ -391,11 +402,13 @@ impl<'a> I2C<'a> {
         // From HAL drivers: apparently there's no need to check for TC since the STOP condition is
         // automatically generated.
         if self.registers.isr.is_set(ISR::STOPF) {
+            //debug!("STOP Set");
             // clear stop flag
             self.registers.icr.write(ICR::STOPCF::SET);
 
             match self.status.get() {
                 I2CStatus::Writing | I2CStatus::Reading => {
+
                     // transaction complete
                     self.status.set(I2CStatus::Idle);
                     // send message back to driver
@@ -431,6 +444,13 @@ impl<'a> I2C<'a> {
     }
 
     fn start_write(&self) {
+        //debug!("Start write");
+
+        if self.registers.isr.is_set(ISR::BUSY) {
+            //debug!("[k] Busy");
+            self.handle_error(Error::Busy);
+        }
+
         if self.tx_len.get() <= 255 {
             self.tx_position.set(0);
             // set number of bytes to send
@@ -454,9 +474,15 @@ impl<'a> I2C<'a> {
 
     fn stop(&self) {
         // send stop
-        self.registers.cr2.modify(CR2::STOP::SET);
+        //self.registers.cr2.modify(CR2::STOP::SET);
 
         // NOTE maybe clear interrupt flags? It appears that this clears ISR flags as well
+        //
+        //
+
+        //debug!("[k] stop call");
+       
+        // disable all interrupts
         self.registers.cr1.modify(CR1::TXIE::CLEAR);
         self.registers.cr1.modify(CR1::RXIE::CLEAR);
         self.registers.cr1.modify(CR1::NACKIE::CLEAR);
@@ -464,12 +490,28 @@ impl<'a> I2C<'a> {
         //self.registers.cr1.modify(CR1::TCIE::CLEAR);
         self.registers.cr1.modify(CR1::ERRIE::CLEAR);
 
+        // clear all interrupt registers
+        self.registers.icr.write(
+            ICR::ALERTCF::SET
+            + ICR::TIMEOUTCF::SET
+            + ICR::PECCF::SET
+            + ICR::OVRCF::SET
+            + ICR::ARLOCF::SET
+            + ICR::BERRCF::SET
+            + ICR::STOPCF::SET
+            + ICR::NACKCF::SET
+            + ICR::ADDRCF::SET);
+
         self.status.set(I2CStatus::Idle);
     }
 
     fn start_read(&self) {
         // check interface is not busy? maybe just error out?
         //while self.registers.isr.read(ISR::BUSY) != 0 {}
+        if self.registers.isr.is_set(ISR::BUSY) {
+            //debug!("[k] Busy");
+            self.handle_error(Error::Busy);
+        }
 
         if self.rx_len.get() <= 255 {
             self.rx_position.set(0);
