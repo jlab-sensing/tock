@@ -483,12 +483,12 @@ impl<'a> I2C<'a> {
         //debug!("[k] stop call");
        
         // disable all interrupts
-        self.registers.cr1.modify(CR1::TXIE::CLEAR);
-        self.registers.cr1.modify(CR1::RXIE::CLEAR);
-        self.registers.cr1.modify(CR1::NACKIE::CLEAR);
-        self.registers.cr1.modify(CR1::STOPIE::CLEAR);
+        //self.registers.cr1.modify(CR1::TXIE::CLEAR);
+        //self.registers.cr1.modify(CR1::RXIE::CLEAR);
+        //self.registers.cr1.modify(CR1::NACKIE::CLEAR);
+        //self.registers.cr1.modify(CR1::STOPIE::CLEAR);
         //self.registers.cr1.modify(CR1::TCIE::CLEAR);
-        self.registers.cr1.modify(CR1::ERRIE::CLEAR);
+        //self.registers.cr1.modify(CR1::ERRIE::CLEAR);
 
         // clear all interrupt registers
         self.registers.icr.write(
