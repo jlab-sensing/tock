@@ -1472,8 +1472,8 @@ impl Rcc {
     ///
     pub fn enable_rtc_clock(&self, source: RtcClockSource) {
         // Enable backup domain write access (required for BDCR register)
-        // the DBP bit in PWR_CR1 must be set to enable write access 
-		// to RTC and backup registers
+        // the DBP bit in PWR_CR1 must be set to enable write access
+        // to RTC and backup registers
         PWR_CR1.modify(PWR_CR1_REG::DBP::SET);
 
         // Enable RTC APB clock for CPU access to RTC registers
@@ -1557,6 +1557,7 @@ pub enum LseDrive {
     High = 0b11,
 }
 
+#[derive(Copy, Clone)]
 pub(crate) enum PLLPDivider {
     DivideBy2 = 0b00001,
     DivideBy3 = 0b00010,

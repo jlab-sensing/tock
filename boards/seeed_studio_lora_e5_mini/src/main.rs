@@ -423,20 +423,20 @@ pub unsafe fn main() {
     // RTC
     //--------------------------------------------------------------------
     debug!("=== RTC Test Starting ===");
-    
+
     let rtc = static_init!(
         stm32wle5jc::rtc::Rtc,
         stm32wle5jc::rtc::Rtc::new(base_peripherals.clocks)
     );
     rtc.register();
-    
+
     // Wire up RTC to peripherals for interrupt handling
     peripherals.set_rtc(rtc);
-    
+
     // Enable RTC interrupts in NVIC
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::RTC_WKUP).enable();
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::RTC_Alarm).enable();
-    
+
     debug!("RTC: Initializing...");
     match rtc.rtc_init() {
         Ok(()) => debug!("RTC: Initialization successful"),
@@ -474,7 +474,7 @@ pub unsafe fn main() {
     // 5. Wakeup timer: 5 times, every 2 seconds (triggered by alarm)
     debug!("RTC: Starting comprehensive test sequence...");
     test::rtc_dummy::run_complete_rtc_test(rtc, rtc_test_client, rtc_ext_client);
-    
+
     debug!("=== RTC Comprehensive Test Initiated ===");
 
     //--------------------------------------------------------------------

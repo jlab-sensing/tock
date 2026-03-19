@@ -22,7 +22,9 @@ use kernel::hil::date_time::{DateTime, DateTimeClient, DateTimeValues, DayOfWeek
 use kernel::utilities::cells::OptionalCell;
 use kernel::ErrorCode;
 
-use stm32wle5jc::rtc::{AlarmId, AlarmMask, AlarmTime, Rtc, RtcAlarmClient, RtcWakeupClient, WakeupClockSource};
+use stm32wle5jc::rtc::{
+    AlarmId, AlarmMask, AlarmTime, Rtc, RtcAlarmClient, RtcWakeupClient, WakeupClockSource,
+};
 
 // ===========================================
 // Test State Machine
@@ -97,7 +99,7 @@ impl<'a> RtcTestClient<'a> {
         debug!("╔══════════════════════════════════════════════════════════╗");
         debug!("║         RTC GET → SET → GET TEST SEQUENCE                ║");
         debug!("╚══════════════════════════════════════════════════════════╝");
-        
+
         self.test_state.set(TestState::FirstGet);
         self.rtc.map(|rtc| {
             debug!("");
@@ -112,7 +114,7 @@ impl<'a> RtcTestClient<'a> {
     }
 }
 
-impl<'a> DateTimeClient for RtcTestClient<'a> {
+impl DateTimeClient for RtcTestClient<'_> {
     /// Callback when get_date_time completes
     fn get_date_time_done(&self, datetime: Result<DateTimeValues, ErrorCode>) {
         match datetime {
@@ -127,7 +129,7 @@ impl<'a> DateTimeClient for RtcTestClient<'a> {
                     dt.seconds,
                     dt.day_of_week
                 );
-                
+
                 // Chain next operation based on test state
                 match self.test_state.get() {
                     TestState::FirstGet => {
@@ -160,7 +162,7 @@ impl<'a> DateTimeClient for RtcTestClient<'a> {
                         debug!("║  ✓ GET → SET → GET TEST COMPLETE!                        ║");
                         debug!("╚══════════════════════════════════════════════════════════╝");
                         self.test_state.set(TestState::AlarmWaiting);
-                        
+
                         // Trigger alarm test automatically
                         self.ext_client.map(|ext| {
                             let target = ext.alarm_target_second.get();
@@ -269,7 +271,10 @@ impl<'a> RtcExtendedTestClient<'a> {
         debug!("");
         debug!("╔══════════════════════════════════════════════════════════╗");
         debug!("║         WAKEUP TIMER TEST                                ║");
-        debug!("║         {} wakeups every {} seconds                         ║", count, interval_seconds);
+        debug!(
+            "║         {} wakeups every {} seconds                      ║",
+            count, interval_seconds
+        );
         debug!("╚══════════════════════════════════════════════════════════╝");
 
         self.reset_wakeup_count();
@@ -282,10 +287,13 @@ impl<'a> RtcExtendedTestClient<'a> {
             0
         };
 
-        self.rtc.map(|rtc| {
-            match rtc.set_wakeup_timer(reload, WakeupClockSource::CkSpre) {
+        self.rtc.map({
+            |rtc| match rtc.set_wakeup_timer(reload, WakeupClockSource::CkSpre) {
                 Ok(()) => {
-                    debug!("  → Wakeup timer started ({}-second intervals)", interval_seconds);
+                    debug!(
+                        "  → Wakeup timer started ({}-second intervals)",
+                        interval_seconds
+                    );
                     debug!("  → Waiting for {} wakeup events...", count);
                     debug!("");
                 }
@@ -301,7 +309,10 @@ impl<'a> RtcExtendedTestClient<'a> {
         debug!("");
         debug!("╔══════════════════════════════════════════════════════════╗");
         debug!("║         ALARM TEST                                       ║");
-        debug!("║         Alarm A set to fire at second {:02}                 ║", target_second);
+        debug!(
+            "║         Alarm A set to fire at second {:02}                 ║",
+            target_second
+        );
         debug!("╚══════════════════════════════════════════════════════════╝");
 
         let alarm_time = AlarmTime {
@@ -318,18 +329,20 @@ impl<'a> RtcExtendedTestClient<'a> {
             },
         };
 
-        self.rtc.map(|rtc| {
-            match rtc.set_alarm(AlarmId::AlarmA, alarm_time) {
+        self.rtc
+            .map(|rtc| match rtc.set_alarm(AlarmId::AlarmA, alarm_time) {
                 Ok(()) => {
-                    debug!("  → Alarm A configured to fire at second {:02}", target_second);
+                    debug!(
+                        "  → Alarm A configured to fire at second {:02}",
+                        target_second
+                    );
                     debug!("  → Waiting for alarm...");
                     debug!("");
                 }
                 Err(e) => {
                     debug!("  ✗ Failed to configure Alarm A: {:?}", e);
                 }
-            }
-        });
+            });
 
         self.test_client.map(|client| {
             client.set_state(TestState::AlarmWaiting);
@@ -345,7 +358,7 @@ impl RtcAlarmClient for RtcExtendedTestClient<'_> {
                 debug!("┌─────────────────────────────────────────────────────────┐");
                 debug!("│ ★★★ ALARM A FIRED! ★★★                                  │");
                 debug!("└─────────────────────────────────────────────────────────┘");
-                
+
                 // Disable the alarm after it fires
                 self.rtc.map(|rtc| {
                     rtc.disable_alarm(AlarmId::AlarmA);
@@ -372,12 +385,15 @@ impl RtcAlarmClient for RtcExtendedTestClient<'_> {
     }
 }
 
-impl<'a> RtcWakeupClient for RtcExtendedTestClient<'a> {
+impl RtcWakeupClient for RtcExtendedTestClient<'_> {
     fn wakeup_fired(&self) {
         let count = self.wakeup_count.get() + 1;
         self.wakeup_count.set(count);
 
-        debug!("┌─ Wakeup #{} ─────────────────────────────────────────────┐", count);
+        debug!(
+            "┌─ Wakeup #{} ─────────────────────────────────────────────┐",
+            count
+        );
 
         // Read and print current time
         self.rtc.map(|rtc| {
@@ -396,10 +412,13 @@ impl<'a> RtcWakeupClient for RtcExtendedTestClient<'a> {
         // Check if we've reached max wakeups
         if count >= self.max_wakeups.get() {
             self.rtc.map(|rtc| rtc.disable_wakeup_timer());
-            
+
             debug!("");
             debug!("╔══════════════════════════════════════════════════════════╗");
-            debug!("║  ✓ WAKEUP TIMER TEST COMPLETE! ({} wakeups)               ║", count);
+            debug!(
+                "║  ✓ WAKEUP TIMER TEST COMPLETE! ({} wakeups)               ║",
+                count
+            );
             debug!("╚══════════════════════════════════════════════════════════╝");
 
             // Move to complete state
@@ -479,18 +498,14 @@ pub fn run_complete_rtc_test<'a>(
 }
 
 /// Start the alarm test (called after GET → SET → GET completes)
-pub fn start_alarm_test<'a>(
-    ext_client: &'a RtcExtendedTestClient<'a>,
-) {
+pub fn start_alarm_test<'a>(ext_client: &'a RtcExtendedTestClient<'a>) {
     // Set up alarm to fire at second 15
     let target = ext_client.alarm_target_second.get();
     ext_client.setup_alarm(target);
 }
 
 /// Start the wakeup timer test (called after alarm fires)
-pub fn start_wakeup_and_alarm_test<'a>(
-    ext_client: &'a RtcExtendedTestClient<'a>,
-) {
+pub fn start_wakeup_and_alarm_test<'a>(ext_client: &'a RtcExtendedTestClient<'a>) {
     // Start wakeup timer: 5 times, every 2 seconds
     ext_client.start_wakeup_test(2, 5);
 }
