@@ -757,7 +757,7 @@ pub fn binary_to_bcd(val: u8) -> u8 {
 ///
 /// # Arguments
 /// * `bcd` - BCD-encoded value where upper nibble contains tens digit (0-9)
-///          and lower nibble contains units digit (0-9)
+///   and lower nibble contains units digit (0-9)
 ///
 /// # Returns
 /// * `Some(binary_value)` - If the BCD value is valid (both nibbles 0-9)
@@ -996,6 +996,7 @@ pub struct Rtc<'a> {
     wakeup_client: OptionalCell<&'a dyn RtcWakeupClient>,
 }
 
+#[allow(clippy::elidable_lifetime_names)]
 impl<'a> Rtc<'a> {
     /// Create a new RTC driver instance
     ///
@@ -1120,13 +1121,13 @@ impl<'a> Rtc<'a> {
         // Write Date Register (DR) - 2000-01-01, Saturday
         // Year: 00 (BCD), Month: 01 (BCD), Day: 01 (BCD), Weekday: 6 (Saturday)
         self.registers.dr.modify(
-            DR::YT.val(0)  // Year tens: 0
-                + DR::YU.val(0)  // Year units: 0 (year 2000)
-                + DR::WDU.val(6) // Saturday (1=Monday, ..., 6=Saturday, 7=Sunday)
-                + DR::MT.val(0)  // Month tens: 0
-                + DR::MU.val(1)  // Month units: 1 (January)
-                + DR::DT.val(0)  // Day tens: 0
-                + DR::DU.val(1), // Day units: 1
+            DR::YT.val(0)
+                + DR::YU.val(0)
+                + DR::WDU.val(6)
+                + DR::MT.val(0)
+                + DR::MU.val(1)
+                + DR::DT.val(0)
+                + DR::DU.val(1),
         );
 
         // Exit initialization mode and start calendar counters
@@ -1219,6 +1220,7 @@ impl DeferredCallClient for Rtc<'_> {
 
 use kernel::hil::date_time::DateTime;
 
+#[allow(clippy::elidable_lifetime_names)]
 impl<'a> Rtc<'a> {
     // ========================================================================
     // Month/DayOfWeek Conversion Helpers
@@ -1527,6 +1529,7 @@ impl<'a> DateTime<'a> for Rtc<'a> {
 // Wakeup Timer Implementation
 // ============================================================================
 
+#[allow(clippy::elidable_lifetime_names)]
 impl<'a> Rtc<'a> {
     /// Timeout iterations for wakeup timer write flag
     ///
@@ -1732,28 +1735,22 @@ impl<'a> Rtc<'a> {
         match alarm {
             AlarmId::AlarmA => {
                 // Write alarm time to ALRMAR register
-                self.registers.alrmar.modify(
-                    // Mask bits
-                    ALRMAR::MSK4.val(if time.mask.mask_date { 1 } else { 0 })
-                        + ALRMAR::MSK3.val(if time.mask.mask_hours { 1 } else { 0 })
-                        + ALRMAR::MSK2.val(if time.mask.mask_minutes { 1 } else { 0 })
-                        + ALRMAR::MSK1.val(if time.mask.mask_seconds { 1 } else { 0 })
-                        // Week day selection
-                        + ALRMAR::WDSEL.val(if time.weekday_select { 1 } else { 0 })
-                        // Date/day in BCD format
-                        + ALRMAR::DT.val((day_bcd >> 4) as u32)
-                        + ALRMAR::DU.val((day_bcd & 0xF) as u32)
-                        // Hour in BCD format (24-hour mode, PM = 0)
-                        + ALRMAR::PM::CLEAR
-                        + ALRMAR::HT.val((hour_bcd >> 4) as u32)
-                        + ALRMAR::HU.val((hour_bcd & 0xF) as u32)
-                        // Minute in BCD format
-                        + ALRMAR::MNT.val((minute_bcd >> 4) as u32)
-                        + ALRMAR::MNU.val((minute_bcd & 0xF) as u32)
-                        // Seconds in BCD format
-                        + ALRMAR::ST.val((seconds_bcd >> 4) as u32)
-                        + ALRMAR::SU.val((seconds_bcd & 0xF) as u32),
-                );
+                let alarm_a_val = ALRMAR::MSK4.val(u32::from(time.mask.mask_date))
+                    + ALRMAR::MSK3.val(u32::from(time.mask.mask_hours))
+                    + ALRMAR::MSK2.val(u32::from(time.mask.mask_minutes))
+                    + ALRMAR::MSK1.val(u32::from(time.mask.mask_seconds))
+                    + ALRMAR::WDSEL.val(u32::from(time.weekday_select))
+                    + ALRMAR::DT.val((day_bcd >> 4) as u32)
+                    + ALRMAR::DU.val((day_bcd & 0xF) as u32)
+                    + ALRMAR::PM::CLEAR
+                    + ALRMAR::HT.val((hour_bcd >> 4) as u32)
+                    + ALRMAR::HU.val((hour_bcd & 0xF) as u32)
+                    + ALRMAR::MNT.val((minute_bcd >> 4) as u32)
+                    + ALRMAR::MNU.val((minute_bcd & 0xF) as u32)
+                    + ALRMAR::ST.val((seconds_bcd >> 4) as u32)
+                    + ALRMAR::SU.val((seconds_bcd & 0xF) as u32);
+
+                self.registers.alrmar.modify(alarm_a_val);
 
                 // Enable Alarm A (set ALRAE)
                 self.registers.cr.modify(CR::ALRAE::SET);
@@ -1763,28 +1760,22 @@ impl<'a> Rtc<'a> {
             }
             AlarmId::AlarmB => {
                 // Write alarm time to ALRMBR register
-                self.registers.alrmbr.modify(
-                    // Mask bits
-                    ALRMBR::MSK4.val(if time.mask.mask_date { 1 } else { 0 })
-                        + ALRMBR::MSK3.val(if time.mask.mask_hours { 1 } else { 0 })
-                        + ALRMBR::MSK2.val(if time.mask.mask_minutes { 1 } else { 0 })
-                        + ALRMBR::MSK1.val(if time.mask.mask_seconds { 1 } else { 0 })
-                        // Week day selection
-                        + ALRMBR::WDSEL.val(if time.weekday_select { 1 } else { 0 })
-                        // Date/day in BCD format
-                        + ALRMBR::DT.val((day_bcd >> 4) as u32)
-                        + ALRMBR::DU.val((day_bcd & 0xF) as u32)
-                        // Hour in BCD format (24-hour mode, PM = 0)
-                        + ALRMBR::PM::CLEAR
-                        + ALRMBR::HT.val((hour_bcd >> 4) as u32)
-                        + ALRMBR::HU.val((hour_bcd & 0xF) as u32)
-                        // Minute in BCD format
-                        + ALRMBR::MNT.val((minute_bcd >> 4) as u32)
-                        + ALRMBR::MNU.val((minute_bcd & 0xF) as u32)
-                        // Seconds in BCD format
-                        + ALRMBR::ST.val((seconds_bcd >> 4) as u32)
-                        + ALRMBR::SU.val((seconds_bcd & 0xF) as u32),
-                );
+                let alarm_b_val = ALRMBR::MSK4.val(u32::from(time.mask.mask_date))
+                    + ALRMBR::MSK3.val(u32::from(time.mask.mask_hours))
+                    + ALRMBR::MSK2.val(u32::from(time.mask.mask_minutes))
+                    + ALRMBR::MSK1.val(u32::from(time.mask.mask_seconds))
+                    + ALRMBR::WDSEL.val(u32::from(time.weekday_select))
+                    + ALRMBR::DT.val((day_bcd >> 4) as u32)
+                    + ALRMBR::DU.val((day_bcd & 0xF) as u32)
+                    + ALRMBR::PM::CLEAR
+                    + ALRMBR::HT.val((hour_bcd >> 4) as u32)
+                    + ALRMBR::HU.val((hour_bcd & 0xF) as u32)
+                    + ALRMBR::MNT.val((minute_bcd >> 4) as u32)
+                    + ALRMBR::MNU.val((minute_bcd & 0xF) as u32)
+                    + ALRMBR::ST.val((seconds_bcd >> 4) as u32)
+                    + ALRMBR::SU.val((seconds_bcd & 0xF) as u32);
+
+                self.registers.alrmbr.modify(alarm_b_val);
 
                 // Enable Alarm B (set ALRBE)
                 self.registers.cr.modify(CR::ALRBE::SET);
