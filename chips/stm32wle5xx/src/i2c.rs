@@ -351,9 +351,23 @@ impl<'a> I2C<'a> {
     }
 
     pub fn handle_event(&self) {
+        //debug!("[k] I2C interrupt status:");
+        //debug!(
+        //    "[k] ALERT={} TIMEOUT={} PECERR={} OVR={} ARLO={} BERR={} STOPF={} NACKF={} ADDR={}",
+        //    self.registers.isr.is_set(ISR::ALERT),
+        //    self.registers.isr.is_set(ISR::TIMEOUT),
+        //    self.registers.isr.is_set(ISR::PECERR),
+        //    self.registers.isr.is_set(ISR::OVR),
+        //    self.registers.isr.is_set(ISR::ARLO),
+        //    self.registers.isr.is_set(ISR::BERR),
+        //    self.registers.isr.is_set(ISR::STOPF),
+        //    self.registers.isr.is_set(ISR::NACKF),
+        //    self.registers.isr.is_set(ISR::ADDR)
+        //);
+
         // handle no acknowledge
         if self.registers.isr.is_set(ISR::NACKF) {
-            //debug!("NACK Set");
+            //debug!("[k] NACK Set");
 
             self.registers.icr.write(ICR::NACKCF::SET);
             
@@ -365,7 +379,7 @@ impl<'a> I2C<'a> {
 
         // send next byte when TXIS is set
         if self.registers.isr.is_set(ISR::TXIS) {
-            //debug!("TXIS Set");
+            //debug!("[k] TXIS Set");
             // check data is available
             if self.buffer.is_some() && self.tx_position.get() < self.tx_len.get() {
                 // ready to send data
@@ -385,12 +399,12 @@ impl<'a> I2C<'a> {
         }
 
         if self.registers.isr.is_set(ISR::RXNE) {
-            //debug!("RXNE Set");
+            //debug!("[k] RXNE Set");
             let byte = self.registers.rxdr.read(RXDR::RXDATA) as u8;
+            //debug!("[k] read byte: {}", byte);
             if self.buffer.is_some() && self.rx_position.get() < self.rx_len.get() {
                 self.buffer.map(|buf| {
                     buf[self.rx_position.get()] = byte;
-                    debug!("[k] read byte: {}", byte);
                     self.rx_position.set(self.rx_position.get() + 1);
                 });
             }
@@ -402,7 +416,7 @@ impl<'a> I2C<'a> {
         // From HAL drivers: apparently there's no need to check for TC since the STOP condition is
         // automatically generated.
         if self.registers.isr.is_set(ISR::STOPF) {
-            //debug!("STOP Set");
+            //debug!("[k] STOP Set");
             // clear stop flag
             self.registers.icr.write(ICR::STOPCF::SET);
 
@@ -444,10 +458,10 @@ impl<'a> I2C<'a> {
     }
 
     fn start_write(&self) {
-        //debug!("Start write");
+        ////debug!("Start write");
 
         if self.registers.isr.is_set(ISR::BUSY) {
-            //debug!("[k] Busy");
+            ////debug!("[k] Busy");
             self.handle_error(Error::Busy);
         }
 
@@ -509,7 +523,7 @@ impl<'a> I2C<'a> {
         // check interface is not busy? maybe just error out?
         //while self.registers.isr.read(ISR::BUSY) != 0 {}
         if self.registers.isr.is_set(ISR::BUSY) {
-            //debug!("[k] Busy");
+            ////debug!("[k] Busy");
             self.handle_error(Error::Busy);
         }
 
@@ -583,6 +597,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         data: &'static mut [u8],
         len: usize,
     ) -> Result<(), (Error, &'static mut [u8])> {
+        //debug!("[k] Write called");
         if self.status.get() == I2CStatus::Idle {
             self.status.set(I2CStatus::Writing);
             self.slave_address.set(addr);
@@ -601,6 +616,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         buffer: &'static mut [u8],
         len: usize,
     ) -> Result<(), (Error, &'static mut [u8])> {
+        //debug!("[k] Read called");
         if self.status.get() == I2CStatus::Idle {
             self.status.set(I2CStatus::Reading);
             self.slave_address.set(addr);
