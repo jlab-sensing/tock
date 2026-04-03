@@ -7,7 +7,7 @@ use core::cell::Cell;
 use kernel::debug;
 
 use kernel::hil;
-use kernel::hil::i2c::{self, Error, I2CHwMasterClient};
+use kernel::hil::i2c::{self, Error, I2CHwMasterClient, I2CMaster};
 use kernel::platform::chip::ClockInterface;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -318,6 +318,8 @@ impl<'a> I2C<'a> {
     }
 
     pub fn set_speed(&self, speed: I2CSpeed) {
+        self.disable();
+
         let clk_speed = self.clock.0.get_frequency();
 
         if clk_speed != 4_000_000 {
@@ -332,6 +334,8 @@ impl<'a> I2C<'a> {
                 self.registers.timingr.set(0x0010061A);
             }
         }
+
+        self.enable();
     }
 
     pub fn is_enabled_clock(&self) -> bool {
@@ -542,6 +546,11 @@ impl<'a> I2C<'a> {
             self.handle_error(Error::NotSupported);
         }
     }
+    
+    fn reset(&self) {
+        self.disable();
+        self.enable();
+    }
 }
 
 impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
@@ -550,6 +559,8 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
     }
 
     fn enable(&self) {
+        debug!("[k] enable called");
+
         // enable all interrupts
         self.registers.cr1.modify(CR1::TXIE::SET);
         self.registers.cr1.modify(CR1::RXIE::SET);
@@ -566,6 +577,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         self.registers.cr1.modify(CR1::PE::CLEAR);
     }
 
+
     fn write_read(
         &self,
         addr: u8,
@@ -574,6 +586,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         read_len: usize,
     ) -> Result<(), (Error, &'static mut [u8])> {
         if self.status.get() == I2CStatus::Idle {
+            self.reset();
             self.status.set(I2CStatus::WritingReading);
             self.slave_address.set(addr);
             self.buffer.replace(data);
@@ -592,8 +605,9 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         data: &'static mut [u8],
         len: usize,
     ) -> Result<(), (Error, &'static mut [u8])> {
-        //debug!("[k] Write called");
+        debug!("[k] Write called");
         if self.status.get() == I2CStatus::Idle {
+            self.reset();
             self.status.set(I2CStatus::Writing);
             self.slave_address.set(addr);
             self.buffer.replace(data);
@@ -611,8 +625,9 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         buffer: &'static mut [u8],
         len: usize,
     ) -> Result<(), (Error, &'static mut [u8])> {
-        //debug!("[k] Read called");
+        debug!("[k] Read called");
         if self.status.get() == I2CStatus::Idle {
+            self.reset();
             self.status.set(I2CStatus::Reading);
             self.slave_address.set(addr);
             self.buffer.replace(buffer);
