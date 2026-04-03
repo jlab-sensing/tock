@@ -399,7 +399,9 @@ impl Adc<'_> {
                     self.setup_sample_count(1);
 
                     // Where to put the reading.
-                    self.registers.result_ptr.set(addr_of!(SAMPLE) as *const _);
+                    let sample: *const [u16; 1] = addr_of!(SAMPLE);
+                    let sample: *const u16 = sample.cast();
+                    self.registers.result_ptr.set(sample);
 
                     // No automatic sampling, will trigger manually.
                     self.registers.samplerate.write(SAMPLERATE::MODE::Task);
@@ -559,13 +561,7 @@ impl Adc<'_> {
 
     fn setup_frequency(&self, frequency: u32) {
         let raw_cc = 16000000 / frequency;
-        let cc = if raw_cc > 2047 {
-            2047
-        } else if raw_cc < 80 {
-            80
-        } else {
-            raw_cc
-        };
+        let cc = raw_cc.clamp(80, 2047);
 
         self.registers
             .samplerate
@@ -586,7 +582,9 @@ impl<'a> hil::adc::Adc<'a> for Adc<'a> {
             .result_maxcnt
             .write(RESULT_MAXCNT::MAXCNT.val(1));
         // Where to put the reading.
-        self.registers.result_ptr.set(addr_of!(SAMPLE) as *const _);
+        let sample: *const [u16; 1] = addr_of!(SAMPLE);
+        let sample: *const u16 = sample.cast();
+        self.registers.result_ptr.set(sample);
 
         // No automatic sampling, will trigger manually.
         self.registers.samplerate.write(SAMPLERATE::MODE::Task);

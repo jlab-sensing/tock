@@ -13,10 +13,6 @@ use kernel::utilities::cells::OptionalCell;
 use rp2040::gpio::{GpioFunction, RPGpio, RPGpioPin};
 use rp2040::uart::Uart;
 
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
-
 /// Writer is used by kernel::debug to panic message to the serial port.
 pub struct Writer {
     uart: OptionalCell<&'static Uart<'static>>,
@@ -84,12 +80,11 @@ impl IoWrite for Writer {
 ///
 /// We just use the standard default provided by the debug module in the kernel.
 #[cfg(not(test))]
-#[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     // LED is connected to GPIO 25
 
-    use core::ptr::{addr_of, addr_of_mut};
+    use core::ptr::addr_of_mut;
     let led_kernel_pin = &RPGpioPin::new(RPGpio::GPIO25);
     let led = &mut LedHigh::new(led_kernel_pin);
     let writer = &mut *addr_of_mut!(WRITER);
@@ -99,8 +94,6 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         writer,
         pi,
         &cortexm0p::support::nop,
-        &*addr_of!(PROCESSES),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     )
 }

@@ -443,17 +443,17 @@ IRQ0_INTF [
     SM0_RXNEMPTY OFFSET(0) NUMBITS(1) []
 ],
 IRQ0_INTS [
-    SM3 OFFSET(0) NUMBITS(1) [],
-    SM2 OFFSET(0) NUMBITS(1) [],
-    SM1 OFFSET(0) NUMBITS(1) [],
-    SM0 OFFSET(0) NUMBITS(1) [],
-    SM3_TXNFULL OFFSET(0) NUMBITS(1) [],
-    SM2_TXNFULL OFFSET(0) NUMBITS(1) [],
-    SM1_TXNFULL OFFSET(0) NUMBITS(1) [],
-    SM0_TXNFULL OFFSET(0) NUMBITS(1) [],
-    SM3_RXNEMPTY OFFSET(0) NUMBITS(1) [],
-    SM2_RXNEMPTY OFFSET(0) NUMBITS(1) [],
-    SM1_RXNEMPTY OFFSET(0) NUMBITS(1) [],
+    SM3 OFFSET(11) NUMBITS(1) [],
+    SM2 OFFSET(10) NUMBITS(1) [],
+    SM1 OFFSET(9) NUMBITS(1) [],
+    SM0 OFFSET(8) NUMBITS(1) [],
+    SM3_TXNFULL OFFSET(7) NUMBITS(1) [],
+    SM2_TXNFULL OFFSET(6) NUMBITS(1) [],
+    SM1_TXNFULL OFFSET(5) NUMBITS(1) [],
+    SM0_TXNFULL OFFSET(4) NUMBITS(1) [],
+    SM3_RXNEMPTY OFFSET(3) NUMBITS(1) [],
+    SM2_RXNEMPTY OFFSET(2) NUMBITS(1) [],
+    SM1_RXNEMPTY OFFSET(1) NUMBITS(1) [],
     SM0_RXNEMPTY OFFSET(0) NUMBITS(1) []
 ],
 IRQ1_INTE [
@@ -560,6 +560,7 @@ where
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct LoadedProgram {
     used_memory: u32,
     origin: usize,
@@ -586,7 +587,7 @@ pub enum SMNumber {
 const SM_NUMBERS: [SMNumber; 4] = [SMNumber::SM0, SMNumber::SM1, SMNumber::SM2, SMNumber::SM3];
 
 /// There can be 2 PIOs per RP2040.
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum PIONumber {
     PIO0 = 0,
     PIO1 = 1,
@@ -625,6 +626,11 @@ pub trait PioRxClient {
     fn on_data_received(&self, data: u32);
 }
 
+/// Client for State Machine interrupts fired by the `irq` PIO instruction
+pub trait PioSmClient {
+    fn on_irq(&self);
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 enum StateMachineState {
     #[default]
@@ -641,6 +647,7 @@ pub struct StateMachine {
     tx_client: OptionalCell<&'static dyn PioTxClient>,
     rx_state: Cell<StateMachineState>,
     rx_client: OptionalCell<&'static dyn PioRxClient>,
+    sm_client: OptionalCell<&'static dyn PioSmClient>,
 }
 
 impl StateMachine {
@@ -658,6 +665,7 @@ impl StateMachine {
             tx_state: Cell::new(StateMachineState::Ready),
             tx_client: OptionalCell::empty(),
             rx_state: Cell::new(StateMachineState::Ready),
+            sm_client: OptionalCell::empty(),
             rx_client: OptionalCell::empty(),
         }
     }
@@ -702,6 +710,11 @@ impl StateMachine {
     /// Set rx client for a state machine.
     pub fn set_rx_client(&self, client: &'static dyn PioRxClient) {
         self.rx_client.set(client);
+    }
+
+    /// Set client for a state machine interrupt.
+    pub fn set_sm_client(&self, client: &'static dyn PioSmClient) {
+        self.sm_client.set(client);
     }
 
     /// Set every config for the IN pins.
@@ -942,6 +955,24 @@ impl StateMachine {
             .modify(SMx_INSTR::INSTR.val(0));
     }
 
+    /// Address of the RX FIFO
+    pub fn rx_fifo_addr(&self, pio: PIONumber) -> u32 {
+        let base_addr = match pio {
+            PIONumber::PIO0 => PIO_0_BASE_ADDRESS,
+            PIONumber::PIO1 => PIO_1_BASE_ADDRESS,
+        };
+        (base_addr as u32) + 0x20 + 4 * (self.sm_number as u32)
+    }
+
+    /// Address of the TX FIFO
+    pub fn tx_fifo_addr(&self, pio: PIONumber) -> u32 {
+        let base_addr = match pio {
+            PIONumber::PIO0 => PIO_0_BASE_ADDRESS,
+            PIONumber::PIO1 => PIO_1_BASE_ADDRESS,
+        };
+        (base_addr as u32) + 0x10 + 4 * (self.sm_number as u32)
+    }
+
     /// Restart a state machine.
     pub fn restart(&self) {
         match self.sm_number {
@@ -990,6 +1021,17 @@ impl StateMachine {
             SMNumber::SM1 => FSTAT::RXEMPTY1,
             SMNumber::SM2 => FSTAT::RXEMPTY2,
             SMNumber::SM3 => FSTAT::RXEMPTY3,
+        };
+        self.registers.fstat.read(field) != 0
+    }
+
+    /// Returns true if the TX FIFO is empty.
+    pub fn tx_empty(&self) -> bool {
+        let field = match self.sm_number {
+            SMNumber::SM0 => FSTAT::TXEMPTY0,
+            SMNumber::SM1 => FSTAT::TXEMPTY1,
+            SMNumber::SM2 => FSTAT::TXEMPTY2,
+            SMNumber::SM3 => FSTAT::TXEMPTY3,
         };
         self.registers.fstat.read(field) != 0
     }
@@ -1206,6 +1248,13 @@ impl StateMachine {
             StateMachineState::Ready => {}
         }
     }
+
+    /// Handle an `SMx` interrupt. The PIO program got to a `irq` instruction.
+    fn handle_sm_interrupt(&self) {
+        let _ = self.sm_client.map(|client| {
+            client.on_irq();
+        });
+    }
 }
 
 pub struct Pio {
@@ -1316,6 +1365,11 @@ impl Pio {
             sms: SM_NUMBERS.map(|x| StateMachine::new(x, PIO1_BASE, PIO1_XOR_BASE, PIO1_SET_BASE)),
             instructions_used: Cell::new(0),
         }
+    }
+
+    /// Get the PIO number
+    pub fn number(&self) -> PIONumber {
+        self.pio_number
     }
 
     /// Get state machine
@@ -1450,7 +1504,7 @@ impl Pio {
             6 => temp = self.registers.irq.read(IRQ::IRQ6),
             7 => temp = self.registers.irq.read(IRQ::IRQ7),
             _ => debug!("IRQ Number invalid - must be from 0 to 7"),
-        };
+        }
         temp != 0
     }
 
@@ -1472,6 +1526,7 @@ impl Pio {
     /// Handle interrupts
     pub fn handle_interrupt(&self) {
         let ints = &self.registers.irq0_ints;
+
         for (sm, irq) in self.sms.iter().zip([
             IRQ0_INTS::SM0_TXNFULL,
             IRQ0_INTS::SM1_TXNFULL,
@@ -1491,6 +1546,28 @@ impl Pio {
             if ints.is_set(irq) {
                 sm.handle_rx_interrupt();
             }
+        }
+        for (sm, irq) in self.sms.iter().zip([
+            IRQ0_INTS::SM0,
+            IRQ0_INTS::SM1,
+            IRQ0_INTS::SM2,
+            IRQ0_INTS::SM3,
+        ]) {
+            if ints.is_set(irq) {
+                sm.handle_sm_interrupt();
+            }
+        }
+    }
+
+    pub fn set_input_sync_bypass(&self, pin: &RPGpioPin, enabled: bool) {
+        let pin = pin.pin();
+        let reg_val = self.registers.input_sync_bypass.get();
+        if enabled {
+            self.registers.input_sync_bypass.set(reg_val | (1 << pin));
+        } else {
+            self.registers
+                .input_sync_bypass
+                .set(reg_val & (!(1 << pin)));
         }
     }
 
@@ -1582,6 +1659,9 @@ impl Pio {
                 .instr_mem
                 .modify(INSTR_MEMx::INSTR_MEM::CLEAR);
         }
+
+        // update the mask of used instructions slots
+        self.instructions_used.set(0);
     }
 
     /// Initialize a new PIO with the same default configuration for all four state machines.
@@ -1595,6 +1675,8 @@ impl Pio {
 }
 
 mod examples {
+    use kernel::hil::gpio::Configure;
+
     use super::{
         debug, Pio, RPGpio, RPGpioPin, Readable, SMNumber, SMx_EXECCTRL, SMx_INSTR, SMx_PINCTRL,
         StateMachineConfiguration, DBG_PADOUT, FDEBUG,
@@ -1714,8 +1796,8 @@ mod examples {
             sm.set_pins_dirs(pin2, 1, true);
             sm.init();
             sm.set_enabled(true);
-            sm.push_blocking(turn_on_gpio_6_7).ok();
-            sm.push_blocking(0).ok();
+            let _ = sm.push_blocking(turn_on_gpio_6_7);
+            let _ = sm.push_blocking(0);
         }
 
         pub fn pwm_program_init(
@@ -1736,9 +1818,77 @@ mod examples {
             sm.set_pins_dirs(pin, 1, true);
             sm.set_side_set_pins(pin, 1, false, true);
             sm.init();
-            sm.push_blocking(pwm_period).ok();
+            let _ = sm.push_blocking(pwm_period);
             sm.exec(pull_command);
             sm.exec(out_isr_32_command);
+            sm.set_enabled(true);
+        }
+
+        pub fn spi_program_init(
+            &self,
+            sm_number: SMNumber,
+            clock_pin: u32,
+            in_pin: u32,
+            out_pin: u32,
+            config: &StateMachineConfiguration,
+        ) {
+            let sm = &self.sms[sm_number as usize];
+            sm.config(config);
+            self.gpio_init(&RPGpioPin::new(RPGpio::from_u32(clock_pin)));
+            self.gpio_init(&RPGpioPin::new(RPGpio::from_u32(in_pin)));
+            self.gpio_init(&RPGpioPin::new(RPGpio::from_u32(out_pin)));
+            sm.set_enabled(false);
+
+            // Important: make the sideset pin an output pin then make it a side set pin
+            // and make sure to do all of this BEFORE setting the outpin as an outpin
+            sm.set_out_pins(clock_pin, 1);
+            sm.set_pins_dirs(clock_pin, 1, true);
+            sm.set_side_set_pins(clock_pin, 1, false, false); // Do not switch pin dirs again, it will mess with the output settings
+
+            sm.set_pins_dirs(out_pin, 1, true);
+            sm.set_out_pins(out_pin, config.out_pins_count);
+
+            sm.init();
+            sm.clear_fifos();
+            sm.set_enabled(true);
+        }
+
+        pub fn cyw43_spi_program_init(
+            &self,
+            sm_number: SMNumber,
+            clock_pin: u32,
+            dio_pin: u32,
+            config: &StateMachineConfiguration,
+        ) {
+            let sm = &self.sms[sm_number as usize];
+            sm.set_enabled(false);
+            sm.config(config);
+            let clock_pin_handle = RPGpioPin::new(RPGpio::from_u32(clock_pin));
+            let dio_pin_handle = RPGpioPin::new(RPGpio::from_u32(dio_pin));
+            self.gpio_init(&clock_pin_handle);
+            self.gpio_init(&dio_pin_handle);
+
+            dio_pin_handle.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
+            dio_pin_handle.set_schmitt(true);
+            self.set_input_sync_bypass(&dio_pin_handle, true);
+            dio_pin_handle.set_drive_strength(crate::gpio::DriveStrength::Drive12ma);
+            dio_pin_handle.set_slew_rate(crate::gpio::SlewRate::Fast);
+            dio_pin_handle.activate_pads();
+
+            clock_pin_handle.set_drive_strength(crate::gpio::DriveStrength::Drive12ma);
+            clock_pin_handle.set_slew_rate(crate::gpio::SlewRate::Fast);
+            clock_pin_handle.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
+            clock_pin_handle.set_schmitt(true);
+            clock_pin_handle.set_slew_rate(crate::gpio::SlewRate::Slow);
+            clock_pin_handle.activate_pads();
+
+            sm.set_pins_dirs(dio_pin, 1, true);
+            sm.set_pins_dirs(clock_pin, 1, true);
+
+            sm.set_pins(&[&clock_pin_handle, &dio_pin_handle], false);
+
+            sm.init();
+            sm.clear_fifos();
             sm.set_enabled(true);
         }
 

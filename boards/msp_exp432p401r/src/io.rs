@@ -2,13 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
-
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::ptr::addr_of;
 use core::ptr::addr_of_mut;
 use kernel::debug;
 use kernel::debug::IoWrite;
@@ -38,7 +33,6 @@ impl IoWrite for Uart {
 }
 
 /// Panic handler
-#[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(info: &PanicInfo) -> ! {
     const LED1_PIN: IntPinNr = IntPinNr::P01_0;
@@ -53,8 +47,6 @@ pub unsafe fn panic_fmt(info: &PanicInfo) -> ! {
         writer,
         info,
         &cortexm4::support::nop,
-        &*addr_of!(PROCESSES),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     )
 }

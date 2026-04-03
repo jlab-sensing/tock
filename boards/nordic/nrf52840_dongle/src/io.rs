@@ -11,10 +11,6 @@ use kernel::hil::uart::{self, Configure};
 use nrf52840::gpio::Pin;
 use nrf52840::uart::{Uarte, UARTE0_BASE};
 
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
-
 struct Writer {
     initialized: bool,
 }
@@ -55,13 +51,12 @@ impl IoWrite for Writer {
 }
 
 #[cfg(not(test))]
-#[no_mangle]
 #[panic_handler]
 /// Panic handler
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     // The nRF52840 Dongle LEDs (see back of board)
 
-    use core::ptr::{addr_of, addr_of_mut};
+    use core::ptr::addr_of_mut;
     let led_kernel_pin = &nrf52840::gpio::GPIOPin::new(Pin::P0_06);
     let led = &mut led::LedLow::new(led_kernel_pin);
     let writer = &mut *addr_of_mut!(WRITER);
@@ -70,8 +65,6 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         writer,
         pi,
         &cortexm4::support::nop,
-        &*addr_of!(PROCESSES),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     )
 }

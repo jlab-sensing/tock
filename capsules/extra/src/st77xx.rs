@@ -359,7 +359,14 @@ impl<'a, A: Alarm<'a>, B: Bus<'a, BusAddr8>, P: Pin> ST77XX<'a, A, B, P> {
                         }
                     }
                     self.dc.map(|dc| dc.set());
-                    let _ = self.bus.write(DataWidth::Bits8, buffer, len);
+                    match self.bus.write(DataWidth::Bits8, buffer, len) {
+                        Ok(()) => (),
+                        Err((e, buf)) => {
+                            self.buffer.replace(buf);
+                            self.status.set(Status::Error(e));
+                            self.do_next_op();
+                        }
+                    }
                 },
             );
         } else {
@@ -373,7 +380,14 @@ impl<'a, A: Alarm<'a>, B: Bus<'a, BusAddr8>, P: Pin> ST77XX<'a, A, B, P> {
             |buffer| {
                 self.status.set(Status::SendParametersSlice);
                 self.dc.map(|dc| dc.set());
-                let _ = self.bus.write(DataWidth::Bits16BE, buffer, len / 2);
+                match self.bus.write(DataWidth::Bits16BE, buffer, len / 2) {
+                    Ok(()) => (),
+                    Err((e, buf)) => {
+                        self.write_buffer.replace(buf);
+                        self.status.set(Status::Error(e));
+                        self.do_next_op();
+                    }
+                }
             },
         );
     }
@@ -395,7 +409,7 @@ impl<'a, A: Alarm<'a>, B: Bus<'a, BusAddr8>, P: Pin> ST77XX<'a, A, B, P> {
                     self.width.set(self.screen.default_height);
                     self.height.set(self.screen.default_width);
                 }
-            };
+            }
             self.buffer.map_or_else(
                 || panic!("st77xx: set rotation has no buffer"),
                 |buffer| {
@@ -488,24 +502,18 @@ impl<'a, A: Alarm<'a>, B: Bus<'a, BusAddr8>, P: Pin> ST77XX<'a, A, B, P> {
                 if position < self.sequence_len.get() {
                     self.sequence_buffer.map_or_else(
                         || panic!("st77xx: do next op has no sequence buffer"),
-                        |sequence| {
-                            match sequence[position] {
-                                SendCommand::Nop => {
-                                    self.do_next_op();
-                                }
-                                SendCommand::Default(cmd) => {
-                                    self.send_command_with_default_parameters(cmd);
-                                }
-                                SendCommand::Position(cmd, position, len) => {
-                                    self.send_command(cmd, position, len, 1);
-                                }
-                                SendCommand::Repeat(cmd, position, len, repeat) => {
-                                    self.send_command(cmd, position, len, repeat);
-                                }
-                                SendCommand::Slice(cmd, len) => {
-                                    self.send_command_slice(cmd, len);
-                                }
-                            };
+                        |sequence| match sequence[position] {
+                            SendCommand::Nop => self.do_next_op(),
+                            SendCommand::Default(cmd) => {
+                                self.send_command_with_default_parameters(cmd)
+                            }
+                            SendCommand::Position(cmd, position, len) => {
+                                self.send_command(cmd, position, len, 1)
+                            }
+                            SendCommand::Repeat(cmd, position, len, repeat) => {
+                                self.send_command(cmd, position, len, repeat)
+                            }
+                            SendCommand::Slice(cmd, len) => self.send_command_slice(cmd, len),
                         },
                     );
                 } else {
@@ -514,23 +522,22 @@ impl<'a, A: Alarm<'a>, B: Bus<'a, BusAddr8>, P: Pin> ST77XX<'a, A, B, P> {
                         self.client.map(|client| {
                             self.power_on.set(true);
 
-                            client.screen_is_ready();
+                            client.screen_is_ready()
                         });
                     } else {
                         if self.setup_command.get() {
                             self.setup_command.set(false);
-                            self.setup_client.map(|setup_client| {
-                                setup_client.command_complete(Ok(()));
-                            });
+                            self.setup_client
+                                .map(|setup_client| setup_client.command_complete(Ok(())));
                         } else {
                             self.client.map(|client| {
                                 if self.write_buffer.is_some() {
                                     self.write_buffer.take().map(|buffer| {
                                         let data = SubSliceMut::new(buffer);
-                                        client.write_complete(data, Ok(()));
+                                        client.write_complete(data, Ok(()))
                                     });
                                 } else {
-                                    client.command_complete(Ok(()));
+                                    client.command_complete(Ok(()))
                                 }
                             });
                         }
@@ -592,6 +599,7 @@ impl<'a, A: Alarm<'a>, B: Bus<'a, BusAddr8>, P: Pin> ST77XX<'a, A, B, P> {
                 let _ = self.send_sequence(self.screen.init_sequence);
             }
             Status::Error(error) => {
+                self.status.set(Status::Idle);
                 if self.setup_command.get() {
                     self.setup_command.set(false);
                     self.setup_client.map(|setup_client| {
@@ -609,12 +617,11 @@ impl<'a, A: Alarm<'a>, B: Bus<'a, BusAddr8>, P: Pin> ST77XX<'a, A, B, P> {
                         }
                     });
                 }
-                self.status.set(Status::Idle);
             }
             _ => {
                 panic!("ST77XX status Idle");
             }
-        };
+        }
     }
 
     fn set_memory_frame(
@@ -800,7 +807,7 @@ impl<'a, A: Alarm<'a>, B: Bus<'a, BusAddr8>, P: Pin> screen::Screen<'a> for ST77
         if self.status.get() == Status::Idle {
             // Data is provided as RGB565 ( RRRRR GGG | GGG BBBBB ), but the device expects it to come over the bus in little endian, so ( GGG BBBBB | RRRRR GGG ).
             // TODO(alevy): replace `chunks_mut` wit `array_chunks` when stable.
-            for pair in data.as_slice().chunks_mut(2) {
+            for pair in data.as_mut_slice().chunks_mut(2) {
                 pair.swap(0, 1);
             }
 
@@ -1224,6 +1231,24 @@ pub struct ST77XXScreen {
     /// as some screen implementations might have off screen
     /// pixels for some of the rotations
     offset: fn(rotation: ScreenRotation) -> (usize, usize),
+}
+
+impl ST77XXScreen {
+    pub const fn new(
+        init_sequence: &'static [SendCommand],
+        default_width: usize,
+        default_height: usize,
+        inverted: bool,
+        offset: fn(rotation: ScreenRotation) -> (usize, usize),
+    ) -> Self {
+        Self {
+            init_sequence,
+            default_width,
+            default_height,
+            inverted,
+            offset,
+        }
+    }
 }
 
 pub const ST7735: ST77XXScreen = ST77XXScreen {

@@ -3,7 +3,6 @@
 // Copyright Tock Contributors 2022.
 
 use core::fmt::{self, Write};
-use core::ptr::addr_of;
 
 use kernel::debug::{self, IoWrite};
 use kernel::hil::{
@@ -50,7 +49,6 @@ impl Write for Writer<'_> {
     }
 }
 
-#[no_mangle]
 #[panic_handler]
 unsafe fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
     let ccm = crate::imxrt1060::ccm::Ccm::new();
@@ -63,8 +61,6 @@ unsafe fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
         &mut writer,
         panic_info,
         &cortexm7::support::nop,
-        &*addr_of!(crate::PROCESSES),
-        &*addr_of!(crate::CHIP),
-        &*addr_of!(crate::PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     )
 }

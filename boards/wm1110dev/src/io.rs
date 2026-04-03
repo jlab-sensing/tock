@@ -12,10 +12,6 @@ use kernel::hil::uart;
 use nrf52840::gpio::Pin;
 use nrf52840::uart::UARTE0_BASE;
 
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
-
 /// Writer is used by kernel::debug to panic message to the serial port.
 pub struct Writer {
     initialized: bool,
@@ -69,12 +65,11 @@ impl IoWrite for Writer {
 ///
 /// We just use the standard default provided by the debug module in the kernel.
 #[cfg(not(test))]
-#[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     // Red Led
 
-    use core::ptr::{addr_of, addr_of_mut};
+    use core::ptr::addr_of_mut;
     let led_red_pin = &nrf52840::gpio::GPIOPin::new(Pin::P0_14);
     let led = &mut led::LedHigh::new(led_red_pin);
     let writer = &mut *addr_of_mut!(WRITER);
@@ -83,8 +78,6 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         writer,
         pi,
         &cortexm4::support::nop,
-        &*addr_of!(PROCESSES),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     )
 }

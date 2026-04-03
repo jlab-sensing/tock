@@ -47,33 +47,24 @@ impl IoWrite for Writer {
                     });
                 }
                 for &c in buf {
-                    unsafe {
-                        uart.send_byte(c);
-                    }
+                    unsafe { uart.send_byte(c) }
                     while !uart.tx_ready() {}
                 }
             }
-            Writer::WriterRtt(rtt_memory) => {
-                rtt_memory.write_sync(buf);
-            }
-        };
+            Writer::WriterRtt(rtt_memory) => rtt_memory.write_sync(buf),
+        }
         buf.len()
     }
 }
 
 #[cfg(not(test))]
-#[no_mangle]
 #[panic_handler]
 /// Panic handler
 pub unsafe fn panic_fmt(pi: &core::panic::PanicInfo) -> ! {
-    use core::ptr::{addr_of, addr_of_mut};
+    use core::ptr::addr_of_mut;
     use kernel::debug;
     use kernel::hil::led;
     use nrf52840::gpio::Pin;
-
-    use crate::CHIP;
-    use crate::PROCESSES;
-    use crate::PROCESS_PRINTER;
 
     // The nRF52840DK LEDs (see back of board)
     let led_kernel_pin = &nrf52840::gpio::GPIOPin::new(Pin::P0_13);
@@ -84,8 +75,6 @@ pub unsafe fn panic_fmt(pi: &core::panic::PanicInfo) -> ! {
         writer,
         pi,
         &cortexm4::support::nop,
-        &*addr_of!(PROCESSES),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     )
 }

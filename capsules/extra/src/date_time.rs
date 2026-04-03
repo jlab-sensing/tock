@@ -251,13 +251,13 @@ impl<'a, DateTime: date_time::DateTime<'a>> DateTimeCapsule<'a, DateTime> {
         self.apps.iter().find_map(|grant| {
             let processid = grant.processid();
             grant.enter(|app, kernel| {
-                app.task.map_or(None, |command| {
+                app.task.and_then(|command| {
                     let command_return = self.call_driver(command, processid);
                     match command_return {
                         Ok(()) => Some(()),
                         Err(e) => {
                             let upcall_status = into_statuscode(Err(e));
-                            kernel.schedule_upcall(0, (upcall_status, 0, 0)).ok();
+                            let _ = kernel.schedule_upcall(0, (upcall_status, 0, 0));
                             None
                         }
                     }
@@ -299,9 +299,7 @@ impl<'a, DateTime: date_time::DateTime<'a>> date_time::DateTimeClient
                         }
                     }
 
-                    upcalls
-                        .schedule_upcall(0, (upcall_status, upcall_r1, upcall_r2))
-                        .ok();
+                    let _ = upcalls.schedule_upcall(0, (upcall_status, upcall_r1, upcall_r2));
                 }
             });
         }
@@ -315,9 +313,7 @@ impl<'a, DateTime: date_time::DateTime<'a>> date_time::DateTimeClient
         let _enter_grant = self.apps.enter(processid, |app, upcalls| {
             app.task = None;
 
-            upcalls
-                .schedule_upcall(0, (into_statuscode(result), 0, 0))
-                .ok();
+            let _ = upcalls.schedule_upcall(0, (into_statuscode(result), 0, 0));
         });
 
         self.queue_next_command();

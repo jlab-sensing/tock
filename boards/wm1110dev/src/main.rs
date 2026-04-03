@@ -7,16 +7,12 @@
 //! It is based on nRF52840 SoC and Semtech LR1110.
 
 #![no_std]
-// Disable this attribute when documenting, as a workaround for
-// https://github.com/rust-lang/rust/issues/62184.
-#![cfg_attr(not(doc), no_main)]
+#![no_main]
 #![deny(missing_docs)]
-
-use core::ptr::addr_of;
-use core::ptr::addr_of_mut;
 
 use kernel::capabilities;
 use kernel::component::Component;
+use kernel::debug::PanicResources;
 use kernel::hil;
 use kernel::hil::gpio::Configure;
 use kernel::hil::gpio::Output;
@@ -24,7 +20,7 @@ use kernel::hil::led::LedHigh;
 use kernel::hil::spi::SpiMaster;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::scheduler::round_robin::RoundRobinSched;
+use kernel::utilities::single_thread_value::SingleThreadValue;
 #[allow(unused_imports)]
 use kernel::{create_capability, debug, debug_gpio, debug_verbose, static_init};
 
@@ -78,18 +74,15 @@ const FAULT_RESPONSE: capsules_system::process_policies::StopWithDebugFaultPolic
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 8;
 
-// State for loading and holding applications.
-static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS] =
-    [None; NUM_PROCS];
+/// The Chip type.
+pub type ChipHw = nrf52840::chip::NRF52<'static, Nrf52840DefaultPeripherals<'static>>;
+type ProcessPrinter = capsules_system::process_printer::ProcessPrinterText;
 
-static mut CHIP: Option<&'static nrf52840::chip::NRF52<Nrf52840DefaultPeripherals>> = None;
-static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
-    None;
+/// Resources for when a board panics used by io.rs.
+static PANIC_RESOURCES: SingleThreadValue<PanicResources<ChipHw, ProcessPrinter>> =
+    SingleThreadValue::new(PanicResources::new());
 
-/// Dummy buffer that causes the linker to reserve enough space for the stack.
-#[no_mangle]
-#[link_section = ".stack_buffer"]
-pub static mut STACK_MEMORY: [u8; 0x1000] = [0; 0x1000];
+kernel::stack_size! {0x1000}
 
 type SHT4xSensor = components::sht4x::SHT4xComponentType<
     capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm<'static, nrf52::rtc::Rtc<'static>>,
@@ -100,6 +93,8 @@ type HumidityDriver = components::humidity::HumidityComponentType<SHT4xSensor>;
 type RngDriver = components::rng::RngComponentType<nrf52840::trng::Trng<'static>>;
 
 type NonvolatileDriver = components::nonvolatile_storage::NonvolatileStorageComponentType;
+
+type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
 
 /// Supported drivers by the platform
 pub struct Platform {
@@ -130,7 +125,7 @@ pub struct Platform {
             nrf52840::spi::SPIM<'static>,
         >,
     >,
-    scheduler: &'static RoundRobinSched<'static>,
+    scheduler: &'static SchedulerInUse,
     systick: cortexm4::systick::SysTick,
 }
 
@@ -164,7 +159,7 @@ impl KernelResources<nrf52::chip::NRF52<'static, Nrf52840DefaultPeripherals<'sta
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
-    type Scheduler = RoundRobinSched<'static>;
+    type Scheduler = SchedulerInUse;
     type SchedulerTimer = cortexm4::systick::SysTick;
     type WatchDog = ();
     type ContextSwitchCallback = ();
@@ -203,6 +198,14 @@ pub unsafe fn start() -> (
 ) {
     nrf52840::init();
 
+    // Initialize deferred calls very early.
+    kernel::deferred_call::initialize_deferred_call_state::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >();
+
+    // Bind global variables to this thread.
+    PANIC_RESOURCES.bind_to_thread::<<ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider>();
+
     let ieee802154_ack_buf = static_init!(
         [u8; nrf52840::ieee802154_radio::ACK_BUF_SIZE],
         [0; nrf52840::ieee802154_radio::ACK_BUF_SIZE]
@@ -218,7 +221,15 @@ pub unsafe fn start() -> (
     nrf52840_peripherals.init();
     let base_peripherals = &nrf52840_peripherals.nrf52;
 
-    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&*addr_of!(PROCESSES)));
+    // Create an array to hold process references.
+    let processes = components::process_array::ProcessArrayComponent::new()
+        .finalize(components::process_array_component_static!(NUM_PROCS));
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.processes.put(processes.as_slice());
+    });
+
+    // Setup space to store the core kernel data structure.
+    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(processes.as_slice()));
 
     nrf52_components::startup::NrfStartupComponent::new(
         false,
@@ -245,11 +256,17 @@ pub unsafe fn start() -> (
     // Configure kernel debug GPIOs as early as possible. These are used by the
     // `debug_gpio!(0, toggle)` macro. We configure these early so that the
     // macro is available during most of the setup code and kernel execution.
-    kernel::debug::assign_gpios(
-        Some(&nrf52840_peripherals.gpio_port[LED_GREEN_PIN]),
-        Some(&nrf52840_peripherals.gpio_port[LED_RED_PIN]),
-        None,
+    let debug_gpios = static_init!(
+        [&'static dyn kernel::hil::gpio::Pin; 2],
+        [
+            &nrf52840_peripherals.gpio_port[LED_GREEN_PIN],
+            &nrf52840_peripherals.gpio_port[LED_RED_PIN]
+        ]
     );
+    kernel::debug::initialize_debug_gpio::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >();
+    kernel::debug::assign_gpios(debug_gpios);
 
     //--------------------------------------------------------------------------
     // GPIO
@@ -301,8 +318,8 @@ pub unsafe fn start() -> (
     //--------------------------------------------------------------------------
 
     base_peripherals.uarte0.initialize(
-        nrf52::pinmux::Pinmux::new(UART_TX_PIN as u32),
-        nrf52::pinmux::Pinmux::new(UART_RX_PIN as u32),
+        nrf52::pinmux::Pinmux::new(UART_TX_PIN),
+        nrf52::pinmux::Pinmux::new(UART_RX_PIN),
         None,
         None,
     );
@@ -320,8 +337,13 @@ pub unsafe fn start() -> (
     .finalize(components::console_component_static!());
 
     // Create the debugger object that handles calls to `debug!()`.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
-        .finalize(components::debug_writer_component_static!());
+    components::debug_writer::DebugWriterComponent::new::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >(
+        uart_mux,
+        create_capability!(capabilities::SetDebugWriterCapability),
+    )
+    .finalize(components::debug_writer_component_static!());
 
     //--------------------------------------------------------------------------
     // SENSORS
@@ -334,8 +356,8 @@ pub unsafe fn start() -> (
     let mux_i2c = components::i2c::I2CMuxComponent::new(&base_peripherals.twi1, None)
         .finalize(components::i2c_mux_component_static!(nrf52840::i2c::TWI));
     base_peripherals.twi1.configure(
-        nrf52840::pinmux::Pinmux::new(I2C_SCL_PIN as u32),
-        nrf52840::pinmux::Pinmux::new(I2C_SDA_PIN as u32),
+        nrf52840::pinmux::Pinmux::new(I2C_SCL_PIN),
+        nrf52840::pinmux::Pinmux::new(I2C_SDA_PIN),
     );
 
     let sht4x = components::sht4x::SHT4xComponent::new(
@@ -383,9 +405,9 @@ pub unsafe fn start() -> (
     ));
 
     base_peripherals.spim0.configure(
-        nrf52840::pinmux::Pinmux::new(SPI_MOSI_PIN as u32),
-        nrf52840::pinmux::Pinmux::new(SPI_MISO_PIN as u32),
-        nrf52840::pinmux::Pinmux::new(SPI_SCK_PIN as u32),
+        nrf52840::pinmux::Pinmux::new(SPI_MOSI_PIN),
+        nrf52840::pinmux::Pinmux::new(SPI_MISO_PIN),
+        nrf52840::pinmux::Pinmux::new(SPI_SCK_PIN),
     );
 
     base_peripherals
@@ -416,7 +438,9 @@ pub unsafe fn start() -> (
 
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
-    PROCESS_PRINTER = Some(process_printer);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.printer.put(process_printer);
+    });
 
     let _process_console = components::process_console::ProcessConsoleComponent::new(
         board_kernel,
@@ -465,7 +489,7 @@ pub unsafe fn start() -> (
     // approach than this.
     nrf52_components::NrfClockComponent::new(&base_peripherals.clock).finalize(());
 
-    let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
+    let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
     let platform = Platform {
@@ -492,7 +516,9 @@ pub unsafe fn start() -> (
         nrf52840::chip::NRF52<Nrf52840DefaultPeripherals>,
         nrf52840::chip::NRF52::new(nrf52840_peripherals)
     );
-    CHIP = Some(chip);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.chip.put(chip);
+    });
 
     //--------------------------------------------------------------------------
     // TESTS
@@ -532,7 +558,6 @@ pub unsafe fn start() -> (
             core::ptr::addr_of_mut!(_sappmem),
             core::ptr::addr_of!(_eappmem) as usize - core::ptr::addr_of!(_sappmem) as usize,
         ),
-        &mut *addr_of_mut!(PROCESSES),
         &FAULT_RESPONSE,
         &process_management_capability,
     )

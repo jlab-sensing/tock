@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
+//! Cortex-M System Call Interface
+//!
 //! Implementation of the architecture-specific portions of the kernel-userland
 //! system call interface.
 
@@ -40,9 +42,6 @@ pub static mut APP_HARD_FAULT: usize = 0;
 #[used]
 pub static mut SCB_REGISTERS: [u32; 5] = [0; 5];
 
-// Space for 8 u32s: r0-r3, r12, lr, pc, and xPSR
-const SVC_FRAME_SIZE: usize = 32;
-
 /// This holds all of the state that the kernel must keep for the process when
 /// the process is not executing.
 #[derive(Default)]
@@ -52,6 +51,9 @@ pub struct CortexMStoredState {
     psr: usize,
     psp: usize,
 }
+
+// Space for 8 u32s: r0-r3, r12, lr, pc, and xPSR
+const SVC_FRAME_SIZE: usize = 32;
 
 /// Values for encoding the stored state buffer in a binary slice.
 const VERSION: usize = 1;
@@ -69,6 +71,7 @@ const REGS_IDX: usize = 6;
 const REGS_RANGE: Range<usize> = REGS_IDX..REGS_IDX + 8;
 
 const USIZE_SZ: usize = size_of::<usize>();
+
 fn usize_byte_range(index: usize) -> Range<usize> {
     index * USIZE_SZ..(index + 1) * USIZE_SZ
 }
@@ -113,8 +116,9 @@ impl core::convert::TryFrom<&[u8]> for CortexMStoredState {
     }
 }
 
-/// Implementation of the `UserspaceKernelBoundary` for the Cortex-M non-floating point
-/// architecture.
+/// Implementation of the
+/// [`UserspaceKernelBoundary`](kernel::syscall::UserspaceKernelBoundary) for
+/// the Cortex-M non-floating point architecture.
 pub struct SysCall<A: CortexMVariant>(PhantomData<A>);
 
 impl<A: CortexMVariant> SysCall<A> {
@@ -304,7 +308,13 @@ impl<A: CortexMVariant> kernel::syscall::UserspaceKernelBoundary for SysCall<A> 
             let r3 = ptr::read(new_stack_pointer.offset(3));
 
             // Get the actual SVC number.
-            let pcptr = ptr::read((new_stack_pointer as *const *const u16).offset(6));
+            // Read the PC from the stack as a *const u16 (i.e. we're treating instructions as
+            // u16).
+            let pcptr_ptr: *const usize = new_stack_pointer;
+            let pcptr_ptr: *const *const u16 = pcptr_ptr.cast();
+            let pcptr = ptr::read(pcptr_ptr.offset(6));
+            // The svc instruction is the last instruction before the PC, and should be 16 bits.
+            // Read it by offsetting the PC.
             let svc_instr = ptr::read(pcptr.offset(-1));
             let svc_num = (svc_instr & 0xff) as u8;
 
@@ -328,7 +338,10 @@ impl<A: CortexMVariant> kernel::syscall::UserspaceKernelBoundary for SysCall<A> 
             kernel::syscall::ContextSwitchReason::Interrupted
         };
 
-        (switch_reason, Some(new_stack_pointer as *const u8))
+        // Cast new_stack_pointer from a *const usize to a *const u8 to match
+        // UserspaceKernelBoundary::switch_to_process' return type.
+        let new_stack_pointer: *const u8 = new_stack_pointer.cast();
+        (switch_reason, Some(new_stack_pointer))
     }
 
     unsafe fn print_context(

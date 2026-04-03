@@ -7,12 +7,10 @@
 //! It is based on RP2040SoC SoC (Cortex M0+).
 
 #![no_std]
-// Disable this attribute when documenting, as a workaround for
-// https://github.com/rust-lang/rust/issues/62184.
-#![cfg_attr(not(doc), no_main)]
+#![no_main]
 #![deny(missing_docs)]
 
-use core::ptr::{addr_of, addr_of_mut};
+use core::ptr::addr_of_mut;
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use components::gpio::GpioComponent;
@@ -20,12 +18,13 @@ use components::led::LedsComponent;
 use enum_primitive::cast::FromPrimitive;
 use kernel::component::Component;
 use kernel::debug;
+use kernel::debug::PanicResources;
 use kernel::hil::led::LedHigh;
 use kernel::hil::usb::Client;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::syscall::SyscallDriver;
-use kernel::{capabilities, create_capability, static_init, Kernel};
+use kernel::utilities::single_thread_value::SingleThreadValue;
+use kernel::{capabilities, create_capability, static_init};
 use rp2040::adc::{Adc, Channel};
 use rp2040::chip::{Rp2040, Rp2040DefaultPeripherals};
 use rp2040::clocks::{
@@ -42,14 +41,15 @@ use rp2040::sysinfo;
 
 mod flash_bootloader;
 
-/// Allocate memory for the stack
-#[no_mangle]
-#[link_section = ".stack_buffer"]
-pub static mut STACK_MEMORY: [u8; 0x1500] = [0; 0x1500];
+kernel::stack_size! {0x1500}
 
 // Manually setting the boot header section that contains the FCB header
+//
+// When compiling for a macOS host, the `link_section` attribute is elided as it
+// yields the following error: `mach-o section specifier requires a segment and
+// section separated by a comma`.
+#[cfg_attr(not(target_os = "macos"), link_section = ".flash_bootloader")]
 #[used]
-#[link_section = ".flash_bootloader"]
 static FLASH_BOOTLOADER: [u8; 256] = flash_bootloader::FLASH_BOOTLOADER;
 
 // State for loading and holding applications.
@@ -60,17 +60,19 @@ const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 4;
 
-static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS] =
-    [None; NUM_PROCS];
+type ChipHw = Rp2040<'static, Rp2040DefaultPeripherals<'static>>;
+type ProcessPrinterInUse = capsules_system::process_printer::ProcessPrinterText;
 
-static mut CHIP: Option<&'static Rp2040<Rp2040DefaultPeripherals>> = None;
-static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
-    None;
+/// Resources for when a board panics used by io.rs.
+static PANIC_RESOURCES: SingleThreadValue<PanicResources<ChipHw, ProcessPrinterInUse>> =
+    SingleThreadValue::new(PanicResources::new());
 
 type TemperatureRp2040Sensor = components::temperature_rp2040::TemperatureRp2040ComponentType<
     capsules_core::virtualizers::virtual_adc::AdcDevice<'static, rp2040::adc::Adc<'static>>,
 >;
 type TemperatureDriver = components::temperature::TemperatureComponentType<TemperatureRp2040Sensor>;
+
+type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
 
 /// Supported drivers by the platform
 pub struct NanoRP2040Connect {
@@ -93,7 +95,7 @@ pub struct NanoRP2040Connect {
         >,
     >,
 
-    scheduler: &'static RoundRobinSched<'static>,
+    scheduler: &'static SchedulerInUse,
     systick: cortexm0p::systick::SysTick,
 }
 
@@ -121,7 +123,7 @@ impl KernelResources<Rp2040<'static, Rp2040DefaultPeripherals<'static>>> for Nan
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
-    type Scheduler = RoundRobinSched<'static>;
+    type Scheduler = SchedulerInUse;
     type SchedulerTimer = cortexm0p::systick::SysTick;
     type WatchDog = ();
     type ContextSwitchCallback = ();
@@ -149,36 +151,31 @@ impl KernelResources<Rp2040<'static, Rp2040DefaultPeripherals<'static>>> for Nan
     }
 }
 
-#[allow(dead_code)]
-extern "C" {
-    /// Entry point used for debugger
-    ///
-    /// When loaded using gdb, the Arduino Nano RP2040 Connect is not reset
-    /// by default. Without this function, gdb sets the PC to the
-    /// beginning of the flash. This is not correct, as the RP2040
-    /// has a more complex boot process.
-    ///
-    /// This function is set to be the entry point for gdb and is used
-    /// to send the RP2040 back in the bootloader so that all the boot
-    /// sequence is performed.
-    fn jump_to_bootloader();
-}
-
-#[cfg(any(doc, all(target_arch = "arm", target_os = "none")))]
-core::arch::global_asm!(
-    "
-    .section .jump_to_bootloader, \"ax\"
-    .global jump_to_bootloader
-    .thumb_func
-  jump_to_bootloader:
+/// Entry point used for debugger.
+///
+/// When loaded using gdb, the Arduino Nano RP2040 Connect is not reset
+/// by default. Without this function, gdb sets the PC to the
+/// beginning of the flash. This is not correct, as the RP2040
+/// has a more complex boot process.
+///
+/// This function is set to be the entry point for gdb and is used
+/// to send the RP2040 back in the bootloader so that all the boot
+/// sequence is performed.
+#[no_mangle]
+#[unsafe(naked)]
+pub unsafe extern "C" fn jump_to_bootloader() {
+    use core::arch::naked_asm;
+    naked_asm!(
+        "
     movs r0, #0
     ldr r1, =(0xe0000000 + 0x0000ed08)
     str r0, [r1]
     ldmia r0!, {{r1, r2}}
     msr msp, r1
     bx r2
-    "
-);
+        "
+    );
+}
 
 fn init_clocks(peripherals: &Rp2040DefaultPeripherals) {
     // Start tick in watchdog
@@ -261,6 +258,15 @@ pub unsafe fn start() -> (
     // Loads relocations and clears BSS
     rp2040::init();
 
+    // Initialize deferred calls very early.
+    kernel::deferred_call::initialize_deferred_call_state_unsafe::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >();
+
+    // Bind global variables to this thread.
+    PANIC_RESOURCES
+        .bind_to_thread_unsafe::<<ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider>();
+
     let peripherals = static_init!(Rp2040DefaultPeripherals, Rp2040DefaultPeripherals::new());
     peripherals.resolve_dependencies();
 
@@ -313,10 +319,19 @@ pub unsafe fn start() -> (
         Rp2040<Rp2040DefaultPeripherals>,
         Rp2040::new(peripherals, &peripherals.sio)
     );
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.chip.put(chip);
+    });
 
-    CHIP = Some(chip);
+    // Create an array to hold process references.
+    let processes = components::process_array::ProcessArrayComponent::new()
+        .finalize(components::process_array_component_static!(NUM_PROCS));
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.processes.put(processes.as_slice());
+    });
 
-    let board_kernel = static_init!(Kernel, Kernel::new(&*addr_of!(PROCESSES)));
+    // Setup space to store the core kernel data structure.
+    let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(processes.as_slice()));
 
     let process_management_capability =
         create_capability!(capabilities::ProcessManagementCapability);
@@ -377,8 +392,16 @@ pub unsafe fn start() -> (
     )
     .finalize(components::console_component_static!());
     // Create the debugger object that handles calls to `debug!()`.
-    components::debug_writer::DebugWriterComponent::new(uart_mux)
-        .finalize(components::debug_writer_component_static!());
+    components::debug_writer::DebugWriterComponent::new_unsafe(
+        uart_mux,
+        create_capability!(capabilities::SetDebugWriterCapability),
+        || unsafe {
+            kernel::debug::initialize_debug_writer_wrapper_unsafe::<
+                <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+            >();
+        },
+    )
+    .finalize(components::debug_writer_component_static!());
 
     cdc.enable();
     cdc.attach();
@@ -530,7 +553,9 @@ pub unsafe fn start() -> (
 
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
-    PROCESS_PRINTER = Some(process_printer);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.printer.put(process_printer);
+    });
 
     // PROCESS CONSOLE
     let process_console = components::process_console::ProcessConsoleComponent::new(
@@ -543,7 +568,7 @@ pub unsafe fn start() -> (
     .finalize(components::process_console_component_static!(RPTimer));
     let _ = process_console.start();
 
-    let scheduler = components::sched::round_robin::RoundRobinComponent::new(&*addr_of!(PROCESSES))
+    let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
     let nano_rp2040_connect = NanoRP2040Connect {
@@ -601,7 +626,6 @@ pub unsafe fn start() -> (
             core::ptr::addr_of_mut!(_sappmem),
             core::ptr::addr_of!(_eappmem) as usize - core::ptr::addr_of!(_sappmem) as usize,
         ),
-        &mut *addr_of_mut!(PROCESSES),
         &FAULT_RESPONSE,
         &process_management_capability,
     )

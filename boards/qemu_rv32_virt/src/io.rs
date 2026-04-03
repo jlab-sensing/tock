@@ -9,10 +9,6 @@ use core::str;
 use kernel::debug;
 use kernel::debug::IoWrite;
 
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
-
 struct Writer {}
 
 static mut WRITER: Writer = Writer {};
@@ -34,10 +30,9 @@ impl IoWrite for Writer {
 
 /// Panic handler.
 #[cfg(not(test))]
-#[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
-    use core::ptr::{addr_of, addr_of_mut};
+    use core::ptr::addr_of_mut;
 
     let writer = &mut *addr_of_mut!(WRITER);
 
@@ -45,9 +40,7 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         writer,
         pi,
         &rv32i::support::nop,
-        &*addr_of!(PROCESSES),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     );
 
     // The system is no longer in a well-defined state. Use

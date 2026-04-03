@@ -481,7 +481,8 @@ impl<'a> Usbc<'a> {
     ) {
         let e: usize = From::from(endpoint);
         let b: usize = From::from(bank);
-        let p = buf.as_ptr() as *mut u8;
+        let p: *const VolatileCell<u8> = buf.as_ptr();
+        let p: *mut u8 = p.cast_mut().cast();
 
         debug1!("Set Endpoint{}/Bank{} addr={:8?}", e, b, p);
         self.descriptors[e][b].set_addr(p);
@@ -599,15 +600,12 @@ impl<'a> Usbc<'a> {
 
     /// Detach from the USB bus.  Also disable USB bus clock to save energy.
     fn detach(&self) {
-        match self.get_state() {
-            State::Active(mode) => {
-                usbc_regs().udcon.modify(DeviceControl::DETACH::SET);
+        if let State::Active(mode) = self.get_state() {
+            usbc_regs().udcon.modify(DeviceControl::DETACH::SET);
 
-                scif::generic_clock_disable(scif::GenericClock::GCLK7);
+            scif::generic_clock_disable(scif::GenericClock::GCLK7);
 
-                self.set_state(State::Idle(mode));
-            }
-            _ => debug1!("Already detached"),
+            self.set_state(State::Idle(mode));
         }
     }
 

@@ -12,10 +12,6 @@ use kernel::hil::uart::Configure;
 use nrf52840::gpio::Pin;
 use nrf52840::uart::{Uarte, UARTE0_BASE};
 
-use crate::CHIP;
-use crate::PROCESSES;
-use crate::PROCESS_PRINTER;
-
 // Expand here with more writing methods as required (rtt/cdc etc...)
 enum Writer {
     WriterUart(/* initialized */ bool),
@@ -49,13 +45,11 @@ impl IoWrite for Writer {
                     });
                 }
                 for &c in buf {
-                    unsafe {
-                        uart.send_byte(c);
-                    }
+                    unsafe { uart.send_byte(c) }
                     while !uart.tx_ready() {}
                 }
             }
-        };
+        }
         buf.len()
     }
 }
@@ -63,13 +57,12 @@ impl IoWrite for Writer {
 const LED2_R_PIN: Pin = Pin::P0_13;
 
 #[cfg(not(test))]
-#[no_mangle]
 #[panic_handler]
 /// Panic handler
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     // The nRF52840DK LEDs (see back of board)
 
-    use core::ptr::{addr_of, addr_of_mut};
+    use core::ptr::addr_of_mut;
     let led_kernel_pin = &nrf52840::gpio::GPIOPin::new(LED2_R_PIN);
     let led = &mut led::LedLow::new(led_kernel_pin);
     let writer = &mut *addr_of_mut!(WRITER);
@@ -78,8 +71,6 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
         writer,
         pi,
         &cortexm4::support::nop,
-        &*addr_of!(PROCESSES),
-        &*addr_of!(CHIP),
-        &*addr_of!(PROCESS_PRINTER),
+        crate::PANIC_RESOURCES.get(),
     )
 }

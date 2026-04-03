@@ -6,8 +6,6 @@
 //!
 //! imxrt1050 chip: <https://www.nxp.com/design/development-boards/i-mx-evaluation-and-development-boards/i-mx-rt1050-evaluation-kit:MIMXRT1050-EVK>
 
-#![crate_name = "imxrt10xx"]
-#![crate_type = "rlib"]
 #![no_std]
 
 pub mod chip;
@@ -229,7 +227,11 @@ pub unsafe fn init() {
     cortexm7::nvic::disable_all();
     cortexm7::nvic::clear_all_pending();
 
-    cortexm7::scb::set_vector_table_offset(core::ptr::addr_of!(BASE_VECTORS) as *const ());
+    // Set the vector table offset, which requires casting from a BASE_VECTORS to a *const ()
+    // pointer.
+    let vector_table: *const [unsafe extern "C" fn(); 16] = core::ptr::addr_of!(BASE_VECTORS);
+    let vector_table: *const () = vector_table.cast();
+    cortexm7::scb::set_vector_table_offset(vector_table);
 
     cortexm7::nvic::enable_all();
 }
