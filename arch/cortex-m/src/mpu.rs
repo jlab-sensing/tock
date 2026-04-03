@@ -379,7 +379,10 @@ impl CortexMRegion {
     }
 }
 
-impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
+// `MPU` is an unsafe trait, and with this implementation we guarantee
+// that we adhere to the semantics documented on that trait and its
+// associated types and methods.
+unsafe impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
     for MPU<NUM_REGIONS, MIN_REGION_SIZE>
 {
     type MpuConfig = CortexMConfig<NUM_REGIONS>;
@@ -392,7 +395,7 @@ impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
             .write(Control::ENABLE::SET + Control::HFNMIENA::CLEAR + Control::PRIVDEFENA::SET);
     }
 
-    fn disable_app_mpu(&self) {
+    unsafe fn disable_app_mpu(&self) {
         // The MPU is not enabled for privileged mode, so we don't have to do
         // anything
         self.registers.ctrl.write(Control::ENABLE::CLEAR);
@@ -449,9 +452,7 @@ impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
         let mut size = min_region_size;
 
         // Region start always has to align to minimum region size bytes
-        if start % MIN_REGION_SIZE != 0 {
-            start += MIN_REGION_SIZE - (start % MIN_REGION_SIZE);
-        }
+        start = start.next_multiple_of(MIN_REGION_SIZE);
 
         // Regions must be at least minimum region size bytes
         if size < MIN_REGION_SIZE {
@@ -466,7 +467,7 @@ impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
         // We can only create an MPU region if the size is a power of two and it divides
         // the start address. If this is not the case, the first thing we try to do to
         // cover the memory region is to use a larger MPU region and expose certain subregions.
-        if size.count_ones() > 1 || start % size != 0 {
+        if size.count_ones() > 1 || !start.is_multiple_of(size) {
             // Which (power-of-two) subregion size would align with the start
             // address?
             //
@@ -481,7 +482,7 @@ impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
                     1_usize << tz
                 } else {
                     // This case means `start` is 0.
-                    let mut ceil = math::closest_power_of_two(size as u32) as usize;
+                    let mut ceil = (size as u32).next_power_of_two() as usize;
                     if ceil < 256 {
                         ceil = 256
                     }
@@ -498,9 +499,7 @@ impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
             let underlying_region_start = start - (start % underlying_region_size);
 
             // If `size` doesn't align to the subregion size, extend it.
-            if size % subregion_size != 0 {
-                size += subregion_size - (size % subregion_size);
-            }
+            size = size.next_multiple_of(subregion_size);
 
             let end = start + size;
             let underlying_region_end = underlying_region_start + underlying_region_size;
@@ -525,7 +524,7 @@ impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
                 // In this case, we can't use subregions to solve the alignment
                 // problem. Instead, we round up `size` to a power of two and
                 // shift `start` up in memory to make it align with `size`.
-                size = math::closest_power_of_two(size as u32) as usize;
+                size = (size as u32).next_power_of_two() as usize;
                 start += size - (start % size);
 
                 region_start = start;
@@ -605,7 +604,7 @@ impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
 
         // Size must be a power of two, so:
         // https://www.youtube.com/watch?v=ovo6zwv6DX4.
-        let mut memory_size_po2 = math::closest_power_of_two(memory_size as u32) as usize;
+        let mut memory_size_po2 = (memory_size as u32).next_power_of_two() as usize;
         let exponent = math::log_base_two(memory_size_po2 as u32);
 
         // Check for compliance with the constraints of the MPU.
@@ -628,9 +627,7 @@ impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
         let mut region_start = unallocated_memory_start as usize;
 
         // If the start and length don't align, move region up until it does.
-        if region_start % region_size != 0 {
-            region_start += region_size - (region_start % region_size);
-        }
+        region_start = region_start.next_multiple_of(region_size);
 
         // We allocate two MPU regions exactly over the process memory block,
         // and we disable subregions at the end of this region to disallow
@@ -660,9 +657,7 @@ impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
             memory_size_po2 *= 2;
             region_size *= 2;
 
-            if region_start % region_size != 0 {
-                region_start += region_size - (region_start % region_size);
-            }
+            region_start = region_start.next_multiple_of(region_size);
 
             num_enabled_subregions = initial_app_memory_size * 8 / region_size + 1;
         }
@@ -785,7 +780,7 @@ impl<const NUM_REGIONS: usize, const MIN_REGION_SIZE: usize> mpu::MPU
         Ok(())
     }
 
-    fn configure_mpu(&self, config: &Self::MpuConfig) {
+    unsafe fn configure_mpu(&self, config: &Self::MpuConfig) {
         // If the hardware is already configured for this app and the app's MPU
         // configuration has not changed, then skip the hardware update.
         if !self.hardware_is_configured_for.contains(&config.id) || config.is_dirty.get() {

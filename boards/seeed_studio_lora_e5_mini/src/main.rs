@@ -1,6 +1,6 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
+// Copyright Tock Contributors 2025.
 
 //! Board file for STM32WLE5JC Seeed Studio LoRa E5 HF mini development board.
 //!
@@ -14,22 +14,22 @@
 
 use core::ptr::addr_of_mut;
 
-use capsules_core::i2c_master::I2CMasterDriver;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::hil::gpio::{Output, Configure};
 use kernel::hil::i2c::I2CMaster;
+use kernel::debug::PanicResources;
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
+use kernel::utilities::single_thread_value::SingleThreadValue;
 use kernel::{create_capability, debug, static_init};
 use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
 use stm32wle5jc::clocks::msi::MSI_FREQUENCY_MHZ;
 use stm32wle5jc::gpio::{PinId, PortId};
-use stm32wle5jc::i2c::I2C;
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
 
@@ -57,6 +57,12 @@ static mut CHIP: Option<&'static stm32wle5jc::chip::Stm32wle5xx<Stm32wle5jcDefau
 static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
     None;
 
+type ProcessPrinterInUse = capsules_system::process_printer::ProcessPrinterText;
+
+/// Resources for when a board panics used by io.rs.
+static PANIC_RESOURCES: SingleThreadValue<PanicResources<ChipHw, ProcessPrinterInUse>> =
+    SingleThreadValue::new(PanicResources::new());
+
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
@@ -71,7 +77,7 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
-struct SeeedStudioLoraE5Hf {
+struct SeeedStudioLoraE5Mini {
     scheduler: &'static RoundRobinSched<'static>,
     systick: cortexm4::systick::SysTick,
     console: &'static capsules_core::console::Console<'static>,
@@ -102,7 +108,7 @@ struct SeeedStudioLoraE5Hf {
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
-impl SyscallDriverLookup for SeeedStudioLoraE5Hf {
+impl SyscallDriverLookup for SeeedStudioLoraE5Mini {
     fn with_driver<F, R>(&self, driver_num: usize, f: F) -> R
     where
         F: FnOnce(Option<&dyn kernel::syscall::SyscallDriver>) -> R,
@@ -125,7 +131,7 @@ impl
             'static,
             stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals<'static>,
         >,
-    > for SeeedStudioLoraE5Hf
+    > for SeeedStudioLoraE5Mini
 {
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
@@ -160,9 +166,7 @@ impl
 
 /// Helper function for miscellaneous peripheral functions
 unsafe fn setup_peripherals(tim2: &stm32wle5jc::tim2::Tim2, subghz_spi: &stm32wle5jc::spi::Spi) {
-    // USART1 IRQn is 36
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::USART1).enable();
-    // USART1 IRQn is 36
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::USART2).enable();
 
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::RADIO_IRQ).enable();
@@ -215,6 +219,11 @@ unsafe fn create_peripherals() -> &'static mut Stm32wle5jcDefaultPeripherals<'st
 /// This is called after RAM initialization is complete.
 #[no_mangle]
 pub unsafe fn main() {
+    // Initialize deferred calls very early.
+    kernel::deferred_call::initialize_deferred_call_state::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >();
+
     stm32wle5jc::init();
 
     let peripherals = create_peripherals();
@@ -351,7 +360,7 @@ pub unsafe fn main() {
     let lora_interrupt_pin = static_init!(
         stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio,
         stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio::new(
-            &base_peripherals.subghz_radio_signal
+            &base_peripherals.subghz_radio_interrupt
         )
     );
 
@@ -396,32 +405,15 @@ pub unsafe fn main() {
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
     });
 
-    let memory_allocation_capability = create_capability!(capabilities::MemoryAllocationCapability);
-
-    let i2c_master_buffer = static_init!(
-        [u8; capsules_core::i2c_master::BUFFER_LENGTH],
-        [0; capsules_core::i2c_master::BUFFER_LENGTH]
-    );
-    let i2c2 = &base_peripherals.i2c2;
-    let i2c_master = static_init!(
-        I2CMasterDriver<I2C<'static>>,
-        I2CMasterDriver::new(
-            i2c2,
-            i2c_master_buffer,
-            board_kernel.create_grant(
-                capsules_core::i2c_master::DRIVER_NUM,
-                &memory_allocation_capability
-            ),
-        )
-    );
-
     base_peripherals.i2c2.enable_clock();
-    base_peripherals
-        .i2c2
-        .set_speed(stm32wle5jc::i2c::I2CSpeed::Speed400k);
-
-    i2c2.set_master_client(i2c_master);
-    i2c2.enable();
+    let i2c_master = components::i2c::I2CMasterDriverComponent::new(
+        board_kernel,
+        capsules_core::i2c_master::DRIVER_NUM,
+        &base_peripherals.i2c2,
+    )
+    .finalize(components::i2c_master_component_static!(
+        stm32wle5jc::i2c::I2C
+    ));
 
     // temporary code for setting GPIO powerdown pin for board peripherals
     gpio_ports.get_pin(PinId::PA09).map(|pin| {
@@ -430,7 +422,7 @@ pub unsafe fn main() {
     });
 
     // Uncomment to run I2C scan test
-    //test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
+    // test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
 
     //--------------------------------------------------------------------
     // PROCESS CONSOLE
@@ -450,7 +442,7 @@ pub unsafe fn main() {
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
-    let seeed_studio_lora_e5_hf = SeeedStudioLoraE5Hf {
+    let seeed_studio_lora_e5_mini = SeeedStudioLoraE5Mini {
         scheduler,
         systick: cortexm4::systick::SysTick::new_with_calibration(
             (MSI_FREQUENCY_MHZ * 1_000_000) as u32,
@@ -502,7 +494,7 @@ pub unsafe fn main() {
     .run();*/
 
     board_kernel.kernel_loop(
-        &seeed_studio_lora_e5_hf,
+        &seeed_studio_lora_e5_mini,
         chip,
         None::<&kernel::ipc::IPC<2>>,
         &main_loop_capability,

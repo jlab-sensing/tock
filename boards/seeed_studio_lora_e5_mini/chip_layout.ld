@@ -1,12 +1,12 @@
 /* Licensed under the Apache License, Version 2.0 or the MIT License. */
 /* SPDX-License-Identifier: Apache-2.0 OR MIT                         */
-/* Copyright Tock Contributors 2023.                                  */
+/* Copyright Tock Contributors 2025.                                  */
 
-/* Memory layout for the STM32F446RE
- * rom = 2MB (LENGTH = 0x02000000)
- * kernel = 256KB
- * user = 256KB
- * ram = 192KB */
+/* Memory layout for the STM32WLE5JC 
+ * rom = 256KB 
+ * kernel = 128KB
+ * user = 128KB
+ * ram = 64KB */
 
 MEMORY
 {

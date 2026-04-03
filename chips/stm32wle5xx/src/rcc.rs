@@ -1,6 +1,6 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
+// Copyright Tock Contributors 2025.
 
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::registers::{register_bitfields, ReadWrite};
@@ -63,7 +63,6 @@ struct RccRegisters {
     extcfgr: ReadWrite<u32, EXTCFGR::Register>,
 }
 
-// TODO ADD DOC COMMENTS
 register_bitfields![u32,
     CR [
         /// Main PLL clock ready flag
@@ -736,7 +735,6 @@ pub struct Rcc {
     registers: StaticRef<RccRegisters>,
 }
 
-// TODO: Is this correct?
 pub enum RtcClockSource {
     LSI,
     LSE,
@@ -790,7 +788,6 @@ impl Rcc {
         self.set_pll_clock_r_divider(PLLRDivider::DivideBy8);
     }
 
-    // CHECKED [x]
     // Get the current system clock source
     pub(crate) fn get_sys_clock_source(&self) -> SysClockSource {
         match self.registers.cfgr.read(CFGR::SWS) {
@@ -801,7 +798,6 @@ impl Rcc {
         }
     }
 
-    // CHECKED [x]
     // Set the system clock source
     // The source must be enabled
     // NOTE: The flash latency also needs to be configured when changing the system clock frequency
@@ -809,7 +805,6 @@ impl Rcc {
         self.registers.cfgr.modify(CFGR::SW.val(source as u32));
     }
 
-    // CHECKED [x]
     pub(crate) fn is_msi_clock_system_clock(&self) -> bool {
         let system_clock_source = self.get_sys_clock_source();
         system_clock_source == SysClockSource::MSI
@@ -817,7 +812,6 @@ impl Rcc {
                 && self.registers.pllcfgr.read(PLLCFGR::PLLSRC) == PllSource::MSI as u32
     }
 
-    // CHECKED [x]
     pub(crate) fn is_hsi_clock_system_clock(&self) -> bool {
         let system_clock_source = self.get_sys_clock_source();
         system_clock_source == SysClockSource::HSI
@@ -825,7 +819,6 @@ impl Rcc {
                 && self.registers.pllcfgr.read(PLLCFGR::PLLSRC) == PllSource::HSI as u32
     }
 
-    // CHECKED [x]
     pub(crate) fn is_hse_clock_system_clock(&self) -> bool {
         let system_clock_source = self.get_sys_clock_source();
         system_clock_source == SysClockSource::HSE
@@ -833,52 +826,43 @@ impl Rcc {
                 && self.registers.pllcfgr.read(PLLCFGR::PLLSRC) == PllSource::HSE as u32
     }
 
-    // CHECKED [x]
     /* MSI close */
     pub(crate) fn disable_msi_clock(&self) {
         self.registers.cr.modify(CR::MSION::CLEAR);
     }
 
-    // CHECKED [x]
     pub(crate) fn enable_msi_clock(&self) {
         self.registers.cr.modify(CR::MSION::SET);
     }
 
-    // CHECKED [x]
     pub(crate) fn is_enabled_msi_clock(&self) -> bool {
         self.registers.cr.is_set(CR::MSION)
     }
 
-    // CHECKED [x]
     pub(crate) fn is_ready_msi_clock(&self) -> bool {
         self.registers.cr.is_set(CR::MSIRDY)
     }
 
     /* HSI clock */
-    // CHECKED [x]
     // The HSI clock must not be configured as the system clock, either directly or indirectly.
     pub(crate) fn disable_hsi_clock(&self) {
         self.registers.cr.modify(CR::HSION::CLEAR);
     }
 
-    // CHECKED [x]
     pub(crate) fn enable_hsi_clock(&self) {
         self.registers.cr.modify(CR::HSION::SET);
     }
 
-    // CHECKED [x]
     pub(crate) fn is_enabled_hsi_clock(&self) -> bool {
         self.registers.cr.is_set(CR::HSION)
     }
 
     // Indicates whether the HSI oscillator is stable
-    // CHECKED [x]
     pub(crate) fn is_ready_hsi_clock(&self) -> bool {
         self.registers.cr.is_set(CR::HSIRDY)
     }
 
     /* HSE clock */
-    // CHECKED [x]
     pub(crate) fn disable_hse_clock(&self) {
         self.registers.cr.modify(CR::HSEON::CLEAR);
         self.registers.cr.modify(CR::HSEBYPPWR::CLEAR);
@@ -1035,7 +1019,6 @@ impl Rcc {
     }
 
     /* AHB prescaler */
-
     pub(crate) fn set_ahb_prescaler(&self, ahb_prescaler: AHBPrescaler) {
         self.registers
             .cfgr
@@ -1057,7 +1040,6 @@ impl Rcc {
     }
 
     /* APB1 prescaler */
-
     pub(crate) fn set_apb1_prescaler(&self, apb1_prescaler: APBPrescaler) {
         self.registers
             .cfgr
@@ -1075,7 +1057,6 @@ impl Rcc {
     }
 
     /* APB2 prescaler */
-
     pub(crate) fn set_apb2_prescaler(&self, apb2_prescaler: APBPrescaler) {
         self.registers
             .cfgr
@@ -1119,12 +1100,10 @@ impl Rcc {
         }
     }
 
-    // CHECKED
     pub(crate) fn set_mco_clock_divider(&self, divider: MCODivider) {
         self.registers.cfgr.modify(CFGR::MCOPRE.val(divider as u32));
     }
 
-    // CHECKED
     pub(crate) fn get_mco_clock_divider(&self) -> MCODivider {
         match self.registers.cfgr.read(CFGR::MCOPRE) {
             0b000 => MCODivider::DivideBy1,
@@ -1136,16 +1115,7 @@ impl Rcc {
         }
     }
 
-    // CHECK THIS ONE
-    pub(crate) fn configure_rng_clock(&self) {
-        unimplemented!()
-        // self.registers.pllcfgr.modify(PLLCFGR::PLLQ.val(2));
-        // self.registers.cr.modify(CR::PLLON::SET);
-    }
-
     // I2C1 clock
-
-    // CHECKED [x]
     pub(crate) fn is_enabled_i2c1_clock(&self) -> bool {
         self.registers.apb1enr1.is_set(APB1ENR1::I2C1EN)
     }
@@ -1176,7 +1146,6 @@ impl Rcc {
     }
 
     // SPI1 clock
-
     pub(crate) fn is_enabled_spi1_clock(&self) -> bool {
         self.registers.apb2enr.is_set(APB2ENR::SPI1EN)
     }
@@ -1190,12 +1159,6 @@ impl Rcc {
     }
 
     // TIM2 clock
-    // NEED THIS / NOT SURE IF ON WLEX?
-    pub(crate) fn is_enabled_tim_pre(&self) -> bool {
-        unimplemented!()
-        // self.registers.dckcfgr.is_set(DCKCFGR::TIMPRE)
-    }
-
     pub(crate) fn is_enabled_tim2_clock(&self) -> bool {
         self.registers.apb1enr1.is_set(APB1ENR1::TIM2EN)
     }
@@ -1209,7 +1172,6 @@ impl Rcc {
     }
 
     // DMA1 clock
-
     pub(crate) fn is_enabled_dma1_clock(&self) -> bool {
         self.registers.ahb1enr.is_set(AHB1ENR::DMA1EN)
     }
@@ -1236,7 +1198,6 @@ impl Rcc {
     }
 
     // GPIOH clock
-
     pub(crate) fn is_enabled_gpioh_clock(&self) -> bool {
         self.registers.ahb2enr.is_set(AHB2ENR::GPIOHEN)
     }
@@ -1250,7 +1211,6 @@ impl Rcc {
     }
 
     // GPIOC clock
-
     pub(crate) fn is_enabled_gpioc_clock(&self) -> bool {
         self.registers.ahb2enr.is_set(AHB2ENR::GPIOCEN)
     }
@@ -1264,7 +1224,6 @@ impl Rcc {
     }
 
     // GPIOB clock
-
     pub(crate) fn is_enabled_gpiob_clock(&self) -> bool {
         self.registers.ahb2enr.is_set(AHB2ENR::GPIOBEN)
     }
@@ -1278,7 +1237,6 @@ impl Rcc {
     }
 
     // GPIOA clock
-
     pub(crate) fn is_enabled_gpioa_clock(&self) -> bool {
         self.registers.ahb2enr.is_set(AHB2ENR::GPIOAEN)
     }
@@ -1305,7 +1263,6 @@ impl Rcc {
     }
 
     // USART2 clock
-
     pub(crate) fn is_enabled_usart2_clock(&self) -> bool {
         self.registers.apb1enr1.is_set(APB1ENR1::USART2EN)
     }
@@ -1319,7 +1276,6 @@ impl Rcc {
     }
 
     // ADC1 clock
-
     pub(crate) fn is_enabled_adc1_clock(&self) -> bool {
         self.registers.apb2enr.is_set(APB2ENR::ADCEN)
     }
@@ -1333,7 +1289,6 @@ impl Rcc {
     }
 
     // SUBGHZSPI clock
-
     pub(crate) fn is_enabled_subghzspi_clock(&self) -> bool {
         self.registers.apb3enr.is_set(APB3ENR::SUBGHZSPIEN)
     }
@@ -1347,7 +1302,6 @@ impl Rcc {
     }
 
     // DAC clock
-
     pub(crate) fn is_enabled_dac_clock(&self) -> bool {
         self.registers.apb1enr1.is_set(APB1ENR1::DACEN)
     }
@@ -1390,20 +1344,6 @@ impl Rcc {
     pub(crate) fn enable_lsi_clock(&self) {
         self.registers.csr.modify(CSR::LSION::SET);
     }
-
-    /* NOT SURE IF POWER CLOCK IS ON WLE5x?
-    pub(crate) fn is_enabled_pwr_clock(&self) -> bool {
-        self.registers.apb1enr.is_set(APB1ENR::PWREN)
-    }
-
-    pub(crate) fn enable_pwr_clock(&self) {
-        // Enable the power interface clock
-        self.registers.apb1enr.modify(APB1ENR::PWREN::SET);
-    }
-
-    pub(crate) fn disable_pwr_clock(&self) {
-        self.registers.apb1enr.modify(APB1ENR::PWREN::CLEAR);
-    } */
 
     pub(crate) fn is_enabled_rtc_clock(&self) -> bool {
         self.registers.apb3enr.is_set(APB3ENR::SUBGHZSPIEN)
@@ -1586,7 +1526,6 @@ impl From<PLLMDivider> for usize {
     }
 }
 
-// CHECKED [x]
 /// Clock sources for the CPU
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum SysClockSource {
@@ -1596,7 +1535,6 @@ pub enum SysClockSource {
     PLLR = 0b11,
 }
 
-// CHECKED [x]
 pub enum PllSource {
     None = 0b00,
     MSI = 0b01,
@@ -1604,7 +1542,6 @@ pub enum PllSource {
     HSE = 0b11,
 }
 
-// CHECKED [x]
 pub enum MCOSource {
     DISABLED = 0b0000,
     SYSCLK = 0b0001,
@@ -1618,7 +1555,6 @@ pub enum MCOSource {
     PLLQCLK = 0b1110,
 }
 
-// CHECKED
 pub enum MCODivider {
     DivideBy1 = 0b000,
     DivideBy2 = 0b001,

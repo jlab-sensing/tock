@@ -1,6 +1,6 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
+// Copyright Tock Contributors 2025.
 
 use cortexm4::support::with_interrupts_disabled;
 use enum_primitive::cast::FromPrimitive;
@@ -400,7 +400,7 @@ const GPIOB_BASE: StaticRef<GpioRegisters> =
 const GPIOA_BASE: StaticRef<GpioRegisters> =
     unsafe { StaticRef::new(0x48000000 as *const GpioRegisters) };
 
-/// STM32WLE5xx has eight GPIO ports labeled from A-H [^1]. This is represented
+/// STM32WLE5xx has eight GPIO ports labeled from A-H. This is represented
 /// by three bits.
 #[repr(u32)]
 pub enum PortId {
@@ -410,16 +410,14 @@ pub enum PortId {
     H = 0b111,
 }
 
-/// Name of the GPIO pin on the STM32F446RE.
+/// Name of the GPIO pin on the STM32WLE5xx.
 ///
-/// The "Pinout and pin description" section [^1] of the STM32F446RE datasheet
+/// The "Pinout and pin description" section of the STM32WLE5xx datasheet
 /// shows the mapping between the names and the hardware pins on different chip
 /// packages.
 ///
 /// The first three bits represent the port and last four bits represent the
 /// pin.
-///
-/// [^1]: Section 4, Pinout and pin description, pages 41-45
 #[rustfmt::skip]
 #[repr(u8)]
 #[derive(Copy, Clone)]
@@ -457,7 +455,7 @@ impl<'a> GpioPorts<'a> {
         self.pins[usize::from(port_num)][usize::from(pin_num)].as_ref()
     }
 
-    pub fn get_port(&self, pinid: PinId) -> &Port {
+    pub fn get_port(&self, pinid: PinId) -> &Port<'_> {
         let mut port_num: u8 = pinid as u8;
 
         // Right shift p by 4 bits, so we can get rid of pin bits
@@ -465,7 +463,7 @@ impl<'a> GpioPorts<'a> {
         &self.ports[usize::from(port_num)]
     }
 
-    pub fn get_port_from_port_id(&self, portid: PortId) -> &Port {
+    pub fn get_port_from_port_id(&self, portid: PortId) -> &Port<'_> {
         &self.ports[portid as usize]
     }
 }
@@ -493,9 +491,7 @@ impl PinId {
 enum_from_primitive! {
     #[repr(u32)]
     #[derive(PartialEq)]
-    /// GPIO pin mode [^1]
-    ///
-    /// [^1]: Section 7.1.4, page 187 of reference manual
+    /// GPIO pin mode.
     pub enum Mode {
         Input = 0b00,
         GeneralPurposeOutputMode = 0b01,
@@ -506,17 +502,10 @@ enum_from_primitive! {
 
 /// Alternate functions that may be assigned to a `Pin`.
 ///
-/// GPIO pins on the STM32F446RE may serve multiple functions. In addition to
+/// GPIO pins on the STM32WLE5xx may serve multiple functions. In addition to
 /// the default functionality, each pin can be assigned up to sixteen different
 /// alternate functions. The various functions for each pin are described in
-/// "Alternate Function"" section of the STM32F446RE datasheet[^1].
-///
-/// Alternate Function bit mapping is shown here[^2].
-///
-/// [^1]: Section 4, Pinout and pin description, Table 11. Alternate function,
-///       pages 59-66
-///
-/// [^2]: Section 7.4.9, page 192 of Reference Manual
+/// "Alternate Function"" section of the STM32WLE5xx datasheet.
 #[repr(u32)]
 pub enum AlternateFunction {
     AF0 = 0b0000,
@@ -539,9 +528,7 @@ pub enum AlternateFunction {
 
 enum_from_primitive! {
     #[repr(u32)]
-    /// GPIO pin internal pull-up and pull-down [^1]
-    ///
-    /// [^1]: Section 7.4.4, page 189 of reference manual
+    /// GPIO pin internal pull-up and pull-down.
     enum PullUpPullDown {
         NoPullUpPullDown = 0b00,
         PullUp = 0b01,
@@ -571,7 +558,8 @@ macro_rules! declare_gpio_pins {
     };
 }
 
-// Note: This would probably be better structured as each port holding
+// Note (from f3 implementation this is based on):
+// This would probably be better structured as each port holding
 // the pins associated with it, but here they are kept separate for
 // historical reasons. If writing new GPIO code, look elsewhere for
 // a template on how to structure the relationship between ports and pins.

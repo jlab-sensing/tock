@@ -17,11 +17,12 @@ use components::gpio::GpioComponent;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::debug;
+use kernel::debug::PanicResources;
 use kernel::hil::gpio::Configure;
 use kernel::hil::led::LedLow;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
+use kernel::utilities::single_thread_value::SingleThreadValue;
 use kernel::{create_capability, static_init};
 
 // use components::fxos8700::Fxos8700Component;
@@ -50,20 +51,23 @@ pub mod boot_header;
 const NUM_PROCS: usize = 4;
 
 type ChipHw = imxrt1050::chip::Imxrt10xx<imxrt1050::chip::Imxrt10xxDefaultPeripherals>;
+type ProcessPrinterInUse = capsules_system::process_printer::ProcessPrinterText;
 
-/// Static variables used by io.rs.
-static mut PROCESSES: Option<&'static ProcessArray<NUM_PROCS>> = None;
-static mut CHIP: Option<&'static ChipHw> = None;
-static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
-    None;
+/// Resources for when a board panics used by io.rs.
+static PANIC_RESOURCES: SingleThreadValue<PanicResources<ChipHw, ProcessPrinterInUse>> =
+    SingleThreadValue::new(PanicResources::new());
 
 // How should the kernel respond when a process faults.
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
 
 // Manually setting the boot header section that contains the FCB header
+//
+// When compiling for a macOS host, the `link_section` attribute is elided as it
+// yields the following error: `mach-o section specifier requires a segment and
+// section separated by a comma`.
+#[cfg_attr(not(target_os = "macos"), link_section = ".boot_hdr")]
 #[used]
-#[link_section = ".boot_hdr"]
 static BOOT_HDR: [u8; 8192] = boot_header::BOOT_HDR;
 
 kernel::stack_size! {0x2000}
@@ -188,7 +192,11 @@ unsafe fn set_pin_primary_functions(
     // Configuring the GPIO_AD_B0_09 as output
     let pin = peripherals.ports.pin(PinId::AdB0_09);
     pin.make_output();
-    kernel::debug::assign_gpios(Some(pin), None, None);
+    let debug_gpios = static_init!([&'static dyn kernel::hil::gpio::Pin; 1], [pin]);
+    kernel::debug::initialize_debug_gpio::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >();
+    kernel::debug::assign_gpios(debug_gpios);
 
     // User_Button is connected to IOMUXC_SNVS_WAKEUP.
     peripherals.ports.gpio5.enable_clock();
@@ -230,6 +238,14 @@ unsafe fn start() -> (
 ) {
     imxrt1050::init();
 
+    // Initialize deferred calls very early.
+    kernel::deferred_call::initialize_deferred_call_state::<
+        <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
+    >();
+
+    // Bind global variables to this thread.
+    PANIC_RESOURCES.bind_to_thread::<<ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider>();
+
     let ccm = static_init!(imxrt1050::ccm::Ccm, imxrt1050::ccm::Ccm::new());
     let peripherals = static_init!(
         imxrt1050::chip::Imxrt10xxDefaultPeripherals,
@@ -251,13 +267,17 @@ unsafe fn start() -> (
     // Create an array to hold process references.
     let processes = components::process_array::ProcessArrayComponent::new()
         .finalize(components::process_array_component_static!(NUM_PROCS));
-    PROCESSES = Some(processes);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.processes.put(processes.as_slice());
+    });
 
     // Setup space to store the core kernel data structure.
     let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(processes.as_slice()));
 
     let chip = static_init!(ChipHw, ChipHw::new(peripherals));
-    CHIP = Some(chip);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.chip.put(chip);
+    });
 
     // LPUART1
 
@@ -487,7 +507,9 @@ unsafe fn start() -> (
     //---------------------------------------------------------------------------
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
-    PROCESS_PRINTER = Some(process_printer);
+    PANIC_RESOURCES.get().map(|resources| {
+        resources.printer.put(process_printer);
+    });
 
     let process_console = components::process_console::ProcessConsoleComponent::new(
         board_kernel,

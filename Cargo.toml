@@ -67,7 +67,7 @@ members = [
     "boards/tutorials/nrf52840dk-dynamic-apps-and-policies",
     "boards/tutorials/nrf52840dk-hotp-tutorial",
     "boards/tutorials/nrf52840dk-thread-tutorial",
-    "boards/seeed_studio_lora-E5-HF",
+    "boards/seeed_studio_lora_e5_mini",
     "boards/tutorials/qemu_rv32_virt-tutorial",
     "capsules/aes_gcm",
     "capsules/ecdsa_sw",
@@ -115,7 +115,6 @@ members = [
     "libraries/enum_primitive",
     "libraries/riscv-csr",
     "libraries/tock-cells",
-    "libraries/tock-register-interface",
     "libraries/tickv",
 ]
 exclude = ["tools/"]

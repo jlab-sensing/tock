@@ -1,56 +1,21 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright OxidOS Automotive SRL.
-//
-// Author: Ioan-Cristian CÎRSTEA <ioan.cirstea@oxidos.io>
+// Copyright Tock Contributors 2025.
 
-//! MSI (high-speed internal) clock driver for the STM32F4xx family. [^doc_ref]
+//! The clock module for STM32WLE5xx chips.
 //!
-//! # Usage
-//!
-//! For the purposes of brevity, any error checking has been removed. In real applications, always
-//! check the return values of the [Msi] methods.
-//!
-//! First, get a reference to the [Msi] struct:
-//! ```rust,ignore
-//! let msi = &peripherals.stm32f4.clocks.msi;
-//! ```
-//!
-//! ## Start the clock
-//!
-//! ```rust,ignore
-//! msi.enable();
-//! ```
-//!
-//! ## Stop the clock
-//!
-//! ```rust,ignore
-//! msi.disable();
-//! ```
-//!
-//! ## Check if the clock is enabled
-//! ```rust,ignore
-//! if msi.is_enabled() {
-//!     /* Do something */
-//! } else {
-//!     /* Do something */
-//! }
-//! ```
-//!
-//! ## Get the frequency of the clock
-//! ```rust,ignore
-//! let msi_frequency_mhz = msi.get_frequency().unwrap();
-//! ```
-//!
-//! [^doc_ref]: See 6.2.2 in the documentation.
+//! This is highly similar to the one for STM32L4xx chips. This clock
+//! implementation provides the minimal functionality required to enable
+//! peripherals and configure speeds (as tested for I2C and UART). This
+//! is still highly a work in progress and documentation comments here
+//! describing the usage will be updated as development continues.
 
 use crate::rcc::Rcc;
 
-use kernel::debug;
 use kernel::ErrorCode;
 
 /// MSI frequency in MHz
-pub const MSI_FREQUENCY_MHZ: usize = 16;
+pub const MSI_FREQUENCY_MHZ: usize = 4;
 
 /// Main MSI clock structure
 pub struct Msi<'a> {
@@ -134,61 +99,5 @@ impl<'a> Msi<'a> {
         } else {
             None
         }
-    }
-}
-
-/// Tests for the MSI clock
-///
-/// This module ensures that the MSI clock works as expected. If changes are brought to the MSI
-/// clock, ensure to run all the tests to see if anything is broken.
-///
-/// # Usage
-///
-/// First, import the [crate::clocks::msi] module in the desired board main file:
-///
-/// ```rust,ignore
-/// use stm32f429zi::clocks::msi;
-/// ```
-///
-/// Then, to run the tests, put the following line before [kernel::process::load_processes]:
-///
-/// ```rust,ignore
-/// msi::tests::run(&peripherals.stm32f4.clocks.msi);
-/// ```
-///
-/// If everything works as expected, the following message should be printed on the kernel console:
-///
-/// ```text
-/// ===============================================
-/// Testing MSI...
-/// Finished testing MSI. Everything is alright!
-/// ===============================================
-/// ```
-///
-/// **NOTE:** All these tests assume default boot configuration.
-pub mod tests {
-    use super::{debug, ErrorCode, Msi, MSI_FREQUENCY_MHZ};
-
-    /// Run the entire test suite.
-    pub fn run(msi: &Msi) {
-        debug!("");
-        debug!("===============================================");
-        debug!("Testing MSI...");
-
-        // By default, the MSI clock is enabled
-        assert!(msi.is_enabled());
-
-        // MSI frequency is 16MHz
-        assert_eq!(Some(MSI_FREQUENCY_MHZ), msi.get_frequency_mhz());
-
-        // Nothing should happen if the MSI clock is being enabled when already running
-        assert_eq!(Ok(()), msi.enable());
-
-        // Impossible to disable the MSI clock since it is the system clock source
-        assert_eq!(Err(ErrorCode::FAIL), msi.disable());
-
-        debug!("Finished testing MSI. Everything is alright!");
-        debug!("===============================================");
-        debug!("");
     }
 }
