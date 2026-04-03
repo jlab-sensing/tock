@@ -17,9 +17,8 @@ use core::ptr::addr_of_mut;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use kernel::capabilities;
 use kernel::component::Component;
-use kernel::hil::gpio::{Output, Configure};
-use kernel::hil::i2c::I2CMaster;
 use kernel::debug::PanicResources;
+use kernel::hil::gpio::{Configure, Output};
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
@@ -388,7 +387,7 @@ pub unsafe fn main() {
 
     //--------------------------------------------------------------------
     // I2C2
-    //-------------------------------------------------------------------- 
+    //--------------------------------------------------------------------
 
     // SDA
     gpio_ports.get_pin(PinId::PA15).map(|pin| {
@@ -422,7 +421,7 @@ pub unsafe fn main() {
     });
 
     // Uncomment to run I2C scan test
-    // test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
+    //test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
 
     //--------------------------------------------------------------------
     // PROCESS CONSOLE
