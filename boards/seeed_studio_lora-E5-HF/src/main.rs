@@ -18,7 +18,7 @@ use capsules_core::i2c_master::I2CMasterDriver;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use kernel::capabilities;
 use kernel::component::Component;
-use kernel::hil::gpio::Output;
+use kernel::hil::gpio::{Output, Configure};
 use kernel::hil::i2c::I2CMaster;
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
@@ -379,14 +379,20 @@ pub unsafe fn main() {
 
     //--------------------------------------------------------------------
     // I2C2
-    //--------------------------------------------------------------------
+    //-------------------------------------------------------------------- 
+
+    // SDA
     gpio_ports.get_pin(PinId::PA15).map(|pin| {
+        pin.set_mode_output_opendrain();
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
     });
 
+    // SCL
     gpio_ports.get_pin(PinId::PB15).map(|pin| {
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
     });
 
