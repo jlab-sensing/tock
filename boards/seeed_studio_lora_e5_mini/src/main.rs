@@ -18,6 +18,8 @@ use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::debug::PanicResources;
+use kernel::deferred_call::DeferredCallClient;
+use kernel::hil::date_time::DateTime;
 use kernel::hil::gpio::Output;
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
@@ -416,6 +418,64 @@ pub unsafe fn main() {
 
     // Uncomment to run I2C scan test
     // test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
+
+    //--------------------------------------------------------------------
+    // RTC
+    //--------------------------------------------------------------------
+    debug!("=== RTC Test Starting ===");
+
+    let rtc = static_init!(
+        stm32wle5jc::rtc::Rtc,
+        stm32wle5jc::rtc::Rtc::new(base_peripherals.clocks)
+    );
+    rtc.register();
+
+    // Wire up RTC to peripherals for interrupt handling
+    peripherals.set_rtc(rtc);
+
+    // Enable RTC interrupts in NVIC
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::RTC_WKUP).enable();
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::RTC_Alarm).enable();
+
+    debug!("RTC: Initializing...");
+    match rtc.rtc_init() {
+        Ok(()) => debug!("RTC: Initialization successful"),
+        Err(e) => debug!("RTC: Initialization failed: {:?}", e),
+    }
+
+    // Set up test client for basic datetime operations
+    let rtc_test_client = static_init!(
+        test::rtc_dummy::RtcTestClient<'static>,
+        test::rtc_dummy::RtcTestClient::new()
+    );
+    rtc_test_client.set_rtc(rtc);
+    rtc.set_client(rtc_test_client);
+
+    // Set up extended test client for alarm and wakeup timer features
+    let rtc_ext_client = static_init!(
+        test::rtc_dummy::RtcExtendedTestClient<'static>,
+        test::rtc_dummy::RtcExtendedTestClient::new()
+    );
+    rtc_ext_client.set_rtc(rtc);
+    rtc_ext_client.set_test_client(rtc_test_client); // Link clients for state coordination
+
+    // Link test client to extended client for triggering alarm test
+    rtc_test_client.set_ext_client(rtc_ext_client);
+
+    // Wire up all client callbacks
+    rtc.set_alarm_client(rtc_ext_client);
+    rtc.set_wakeup_client(rtc_ext_client);
+
+    // Run the complete RTC test sequence:
+    // 1. GET current time
+    // 2. SET new time (2025-01-15 10:00:00)
+    // 3. GET time again (verify change)
+    // 4. Alarm: fires at second 15 (triggered automatically after GET→SET→GET)
+    // 5. Wakeup timer: 5 times, every 2 seconds (triggered by alarm)
+    debug!("RTC: Starting comprehensive test sequence...");
+    test::rtc_dummy::run_complete_rtc_test(rtc, rtc_test_client, rtc_ext_client);
+
+    debug!("=== RTC Comprehensive Test Initiated ===");
 
     //--------------------------------------------------------------------
     // PROCESS CONSOLE

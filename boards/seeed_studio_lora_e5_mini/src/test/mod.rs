@@ -3,3 +3,4 @@
 // Copyright Tock Contributors 2022.
 
 pub(crate) mod i2c_dummy;
+pub(crate) mod rtc_dummy;

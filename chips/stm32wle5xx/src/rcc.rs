@@ -6,6 +6,17 @@ use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::registers::{register_bitfields, ReadWrite};
 use kernel::utilities::StaticRef;
 
+/// PWR CR1 register for backup domain access control
+const PWR_CR1: StaticRef<ReadWrite<u32, PWR_CR1_REG::Register>> =
+    unsafe { StaticRef::new(0x5800_0400 as *const _) };
+
+register_bitfields![u32,
+    PWR_CR1_REG [
+        /// Disable backup domain write protection
+        DBP OFFSET(8) NUMBITS(1) [],
+    ],
+];
+
 /// Reset and clock control
 #[repr(C)]
 struct RccRegisters {
@@ -1332,7 +1343,11 @@ impl Rcc {
         self.registers.ahb3enr.modify(AHB3ENR::RNGEN::CLEAR);
     }
 
-    // RTC clock
+    // =========================================================================
+    // RTC Clock Management
+    // =========================================================================
+
+    /// Convert RTC clock source enum to register value
     pub(crate) fn source_into_u32(source: RtcClockSource) -> u32 {
         match source {
             RtcClockSource::LSE => 1,
@@ -1341,40 +1356,208 @@ impl Rcc {
         }
     }
 
-    pub(crate) fn enable_lsi_clock(&self) {
+    /// Get the current RTC clock source from BDCR register
+    pub fn get_rtc_clock_source(&self) -> Option<RtcClockSource> {
+        match self.registers.bdcr.read(BDCR::RTCSEL) {
+            0b00 => None,
+            0b01 => Some(RtcClockSource::LSE),
+            0b10 => Some(RtcClockSource::LSI),
+            0b11 => Some(RtcClockSource::HSERTC),
+            _ => None,
+        }
+    }
+
+    /// Set the RTC clock source in BDCR register
+    pub fn set_rtc_clock_source(&self, source: RtcClockSource) {
+        let source_num = Rcc::source_into_u32(source);
+        self.registers.bdcr.modify(BDCR::RTCSEL.val(source_num));
+    }
+
+    // -------------------------------------------------------------------------
+    // LSI Clock (Low-Speed Internal ~32 kHz)
+    // -------------------------------------------------------------------------
+
+    /// Enable the LSI oscillator
+    pub fn enable_lsi_clock(&self) {
         self.registers.csr.modify(CSR::LSION::SET);
     }
 
-    pub(crate) fn is_enabled_rtc_clock(&self) -> bool {
-        self.registers.apb3enr.is_set(APB3ENR::SUBGHZSPIEN)
+    /// Disable the LSI oscillator
+    pub fn disable_lsi_clock(&self) {
+        self.registers.csr.modify(CSR::LSION::CLEAR);
     }
 
-    pub(crate) fn enable_rtc_clock(&self, source: RtcClockSource) {
-        // Enable LSI
+    /// Check if LSI oscillator is enabled
+    pub fn is_enabled_lsi_clock(&self) -> bool {
+        self.registers.csr.is_set(CSR::LSION)
+    }
+
+    /// Check if LSI oscillator is ready (stable)
+    pub fn is_ready_lsi_clock(&self) -> bool {
+        self.registers.csr.is_set(CSR::LSIRDY)
+    }
+
+    /// Enable LSI and wait for it to be ready
+    /// Returns true if LSI is ready, false if timeout occurred
+    pub fn enable_lsi_clock_and_wait(&self) -> bool {
         self.enable_lsi_clock();
-        let mut counter = 1_000;
-        while counter > 0 && !self.registers.csr.is_set(CSR::LSION) {
+        // Wait for LSI to be ready with timeout
+        let mut counter = 10_000;
+        while counter > 0 && !self.is_ready_lsi_clock() {
             counter -= 1;
         }
-        if counter == 0 {
-            panic!("Unable to activate lsi clock");
+        counter > 0
+    }
+
+    // -------------------------------------------------------------------------
+    // LSE Clock (Low-Speed External 32.768 kHz)
+    // -------------------------------------------------------------------------
+
+    /// Enable the LSE oscillator
+    pub fn enable_lse_clock(&self) {
+        self.registers.bdcr.modify(BDCR::LSEON::SET);
+    }
+
+    /// Disable the LSE oscillator
+    pub fn disable_lse_clock(&self) {
+        self.registers.bdcr.modify(BDCR::LSEON::CLEAR);
+    }
+
+    /// Check if LSE oscillator is enabled
+    pub fn is_enabled_lse_clock(&self) -> bool {
+        self.registers.bdcr.is_set(BDCR::LSEON)
+    }
+
+    /// Check if LSE oscillator is ready (stable)
+    pub fn is_ready_lse_clock(&self) -> bool {
+        self.registers.bdcr.is_set(BDCR::LSERDY)
+    }
+
+    /// Enable LSE bypass mode (for external clock input)
+    pub fn enable_lse_bypass(&self) {
+        self.registers.bdcr.modify(BDCR::LSEBYP::SET);
+    }
+
+    /// Disable LSE bypass mode
+    pub fn disable_lse_bypass(&self) {
+        self.registers.bdcr.modify(BDCR::LSEBYP::CLEAR);
+    }
+
+    /// Set LSE drive capability
+    pub fn set_lse_drive(&self, drive: LseDrive) {
+        self.registers.bdcr.modify(BDCR::LSEDRV.val(drive as u32));
+    }
+
+    // -------------------------------------------------------------------------
+    // RTC Kernel Clock
+    // -------------------------------------------------------------------------
+
+    /// Check if RTC kernel clock is enabled
+    pub fn is_enabled_rtc_clock(&self) -> bool {
+        self.registers.bdcr.is_set(BDCR::RTCEN)
+    }
+
+    /// Enable RTC kernel clock with specified source
+    ///
+    /// This method:
+    /// 1. Enables backup domain write access (PWR_CR1.DBP)
+    /// 2. Enables the RTC APB clock for register access
+    /// 3. Enables the appropriate clock source (LSI, LSE, or HSE/32)
+    /// 4. Waits for the clock source to be ready
+    /// 5. Selects the clock source for RTC
+    /// 6. Enables the RTC kernel clock
+    ///
+    /// # Arguments
+    /// * `source` - The clock source to use for RTC
+    ///
+    pub fn enable_rtc_clock(&self, source: RtcClockSource) {
+        // Enable backup domain write access (required for BDCR register)
+        // the DBP bit in PWR_CR1 must be set to enable write access
+        // to RTC and backup registers
+        PWR_CR1.modify(PWR_CR1_REG::DBP::SET);
+
+        // Enable RTC APB clock for CPU access to RTC registers
+        self.enable_rtcapb_clock();
+
+        // Enable and wait for the appropriate clock source
+        match source {
+            RtcClockSource::LSI => {
+                if !self.enable_lsi_clock_and_wait() {
+                    panic!("Unable to activate LSI clock for RTC");
+                }
+            }
+            RtcClockSource::LSE => {
+                self.enable_lse_clock();
+                // Wait for LSE to be ready with timeout
+                let mut counter = 100_000; // LSE takes longer to stabilize
+                while counter > 0 && !self.is_ready_lse_clock() {
+                    counter -= 1;
+                }
+                if counter == 0 {
+                    panic!("Unable to activate LSE clock for RTC");
+                }
+            }
+            RtcClockSource::HSERTC => {
+                // HSE should already be enabled if using HSE/32 for RTC
+                if !self.is_ready_hse_clock() {
+                    panic!("HSE clock not ready for RTC");
+                }
+            }
         }
 
         // Select RTC clock source
-        let source_num = Rcc::source_into_u32(source);
-        self.registers.bdcr.modify(BDCR::RTCSEL.val(source_num));
+        self.set_rtc_clock_source(source);
 
         // Enable RTC clock
         self.registers.bdcr.modify(BDCR::RTCEN::SET);
     }
 
-    pub(crate) fn disable_rtc_clock(&self) {
-        self.registers.bdcr.modify(BDCR::RTCEN.val(1));
-        self.registers.bdcr.modify(BDCR::RTCSEL.val(0));
+    /// Disable RTC kernel clock
+    /// This only disables the RTC kernel clock, not the clock source
+    pub fn disable_rtc_clock(&self) {
+        self.registers.bdcr.modify(BDCR::RTCEN::CLEAR);
+    }
+
+    // -------------------------------------------------------------------------
+    // RTC APB Clock (for register access)
+    // -------------------------------------------------------------------------
+
+    /// Check if RTC APB clock is enabled
+    pub fn is_enabled_rtcapb_clock(&self) -> bool {
+        self.registers.apb1enr1.is_set(APB1ENR1::RTCAPBEN)
+    }
+
+    /// Enable RTC APB clock (required for CPU access to RTC registers)
+    pub fn enable_rtcapb_clock(&self) {
+        self.registers.apb1enr1.modify(APB1ENR1::RTCAPBEN::SET);
+    }
+
+    /// Disable RTC APB clock
+    pub fn disable_rtcapb_clock(&self) {
+        self.registers.apb1enr1.modify(APB1ENR1::RTCAPBEN::CLEAR);
+    }
+
+    // -------------------------------------------------------------------------
+    // Backup Domain Reset
+    // -------------------------------------------------------------------------
+
+    /// Perform a backup domain software reset
+    /// This resets all RTC registers and the RTC clock source selection
+    pub fn backup_domain_reset(&self) {
+        self.registers.bdcr.modify(BDCR::BDRST::SET);
+        self.registers.bdcr.modify(BDCR::BDRST::CLEAR);
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+/// LSE oscillator drive capability
+pub enum LseDrive {
+    Low = 0b00,
+    MediumLow = 0b01,
+    MediumHigh = 0b10,
+    High = 0b11,
+}
+
+#[derive(Copy, Clone)]
 pub(crate) enum PLLPDivider {
     DivideBy2 = 0b00001,
     DivideBy3 = 0b00010,

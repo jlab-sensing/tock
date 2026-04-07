@@ -24,6 +24,11 @@ impl<'a> Stm32wle5jcDefaultPeripherals<'a> {
     pub fn init(&'static self) {
         self.stm32wle.setup_circular_deps();
     }
+
+    /// Set the RTC peripheral reference for interrupt handling
+    pub fn set_rtc(&self, rtc: &'a crate::rtc::Rtc<'a>) {
+        self.stm32wle.set_rtc(rtc);
+    }
 }
 impl kernel::platform::chip::InterruptService for Stm32wle5jcDefaultPeripherals<'_> {
     unsafe fn service_interrupt(&self, interrupt: u32) -> bool {

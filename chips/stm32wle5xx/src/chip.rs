@@ -32,6 +32,7 @@ pub struct Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
     pub subghz_radio_interrupt: crate::subghz_radio::SubGhzRadioInterrupt<'a>,
     pub pwr: crate::pwr::Pwr,
     pub uid64: crate::device_signature::Uid64,
+    rtc: kernel::utilities::cells::OptionalCell<&'a crate::rtc::Rtc<'a>>,
 }
 
 impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
@@ -54,6 +55,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
             subghz_radio_interrupt: crate::subghz_radio::SubGhzRadioInterrupt::new(),
             pwr: crate::pwr::Pwr::new(),
             uid64: crate::device_signature::Uid64::new(),
+            rtc: kernel::utilities::cells::OptionalCell::empty(),
         }
     }
 
@@ -62,6 +64,11 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
         self.gpio_ports.setup_circular_deps();
         kernel::deferred_call::DeferredCallClient::register(&self.usart1);
         kernel::deferred_call::DeferredCallClient::register(&self.usart2);
+    }
+
+    /// Set the RTC peripheral reference for interrupt handling
+    pub fn set_rtc(&self, rtc: &'a crate::rtc::Rtc<'a>) {
+        self.rtc.set(rtc);
     }
 }
 
@@ -91,6 +98,12 @@ impl<ChipSpecs: ChipSpecsTrait> InterruptService for Stm32wle5xxDefaultPeriphera
             | nvic::EXTI9_5
             | nvic::EXTI15_10 => {
                 self.exti.handle_interrupt();
+            }
+            // RTC interrupts: wakeup timer, alarm, and timestamp
+            nvic::TAMP_STAMP | nvic::RTC_WKUP | nvic::RTC_Alarm => {
+                self.rtc.map(|rtc| {
+                    rtc.handle_interrupt();
+                });
             }
             _ => return false,
         }
