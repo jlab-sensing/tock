@@ -400,7 +400,7 @@ const GPIOB_BASE: StaticRef<GpioRegisters> =
 const GPIOA_BASE: StaticRef<GpioRegisters> =
     unsafe { StaticRef::new(0x48000000 as *const GpioRegisters) };
 
-/// STM32WLE5xx has eight GPIO ports labeled from A-H. This is represented
+/// STM32WLE5xx has eight GPIO ports labeled from A-H [^1]. This is represented
 /// by three bits.
 #[repr(u32)]
 pub enum PortId {
@@ -433,8 +433,9 @@ pub enum PinId {
     PB12 = 0b0011100, PB13 = 0b0011101, PB14 = 0b0011110, PB15 = 0b0011111,
 
     PC00 = 0b0100000, PC01 = 0b0100001, PC02 = 0b0100010, PC03 = 0b0100011,
-    PC04 = 0b0100100, PC05 = 0b0100101, PC06 = 0b0100110, PC13 = 0b0101101,
-    PC14 = 0b0101110, PC15 = 0b0101111,
+    PC04 = 0b0100100, PC05 = 0b0100101, PC06 = 0b0100110, PC07 = 0b0100111,
+    PC08 = 0b0101000, PC09 = 0b0101001, PC10 = 0b0101010, PC11 = 0b0101011,
+    PC12 = 0b0101100, PC13 = 0b0101101, PC14 = 0b0101110, PC15 = 0b0101111,
 
     PH03 = 0b1110011,
     
@@ -612,10 +613,10 @@ impl<'a> GpioPorts<'a> {
                     PB00 PB01 PB02 PB03 PB04 PB05 PB06 PB07
                     PB08 PB09 PB10 PB11 PB12 PB13 PB14 PB15, exti
                 },
-                declare_gpio_pins!(
-                    PC00 PC01 PC02 PC03 PC04 PC05 PC06 None
-                    None None None None None PC13 PC14 PC15, exti
-                ),
+                declare_gpio_pins! {
+                    PC00 PC01 PC02 PC03 PC04 PC05 PC06 PC07
+                    PC08 PC09 PC10 PC11 PC12 PC13 PC14 PC15, exti
+                },
                 declare_gpio_pins!(
                     None None None PH03 None None None None
                     None None None None None None None None, exti),

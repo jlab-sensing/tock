@@ -9,6 +9,7 @@
 #![crate_name = "stm32wle5xx"]
 #![crate_type = "rlib"]
 #![no_std]
+#![allow(clippy::doc_suspicious_footnotes)]
 
 pub mod chip;
 pub mod chip_specific;
@@ -21,6 +22,7 @@ pub mod gpio;
 pub mod i2c;
 pub mod pwr;
 pub mod rcc;
+pub mod sdi12;
 pub mod spi;
 pub mod subghz_radio;
 pub mod syscfg;

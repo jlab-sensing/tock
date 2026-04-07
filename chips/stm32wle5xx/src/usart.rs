@@ -434,7 +434,7 @@ impl<'a> Usart<'a> {
     }
 
     pub fn handle_interrupt(&self) {
-        if self.registers.isr.is_set(ISR::TXE) {
+        if self.registers.isr.is_set(ISR::TC) {
             self.disable_transmit_interrupt();
 
             // ignore IRQ if not transmitting
@@ -444,15 +444,10 @@ impl<'a> Usart<'a> {
                         self.registers.tdr.set(buf[self.tx_position.get()].into());
                         self.tx_position.replace(self.tx_position.get() + 1);
                     });
-                }
-                if self.tx_position.get() == self.tx_len.get() {
+                    self.enable_transmit_interrupt();
+                } else {
                     // transmission done
                     self.tx_status.replace(USARTStateTX::Idle);
-                } else {
-                    self.enable_transmit_interrupt();
-                }
-                // notify client if transfer is done
-                if self.tx_status.get() == USARTStateTX::Idle {
                     self.tx_client.map(|client| {
                         if let Some(buf) = self.tx_buffer.take() {
                             client.transmitted_buffer(buf, self.tx_len.get(), Ok(()));
@@ -464,29 +459,30 @@ impl<'a> Usart<'a> {
 
         if self.registers.isr.is_set(ISR::RXNE) {
             let byte = self.registers.rdr.get() as u8;
-            self.disable_receive_interrupt();
 
             // ignore IRQ if not receiving
             if self.rx_status.get() == USARTStateRX::Receiving {
                 if self.rx_position.get() < self.rx_len.get() {
                     self.rx_buffer.map(|buf| {
                         buf[self.rx_position.get()] = byte;
-                        self.rx_position.replace(self.rx_position.get() + 1);
                     });
+                    self.rx_position.set(self.rx_position.get() + 1);
                 }
-                if self.rx_position.get() == self.rx_len.get() {
-                    // reception done
-                    self.rx_status.replace(USARTStateRX::Idle);
-                } else {
-                    self.enable_receive_interrupt();
-                }
-                // notify client if transfer is done
-                if self.rx_status.get() == USARTStateRX::Idle {
+
+                // Completion conditions:
+                // 1) buffer full, OR
+                // 2) SDI-12 line complete on '\n'
+                let done = self.rx_position.get() == self.rx_len.get() || byte == b'\n';
+
+                if done {
+                    self.rx_status.set(USARTStateRX::Idle);
+                    self.disable_receive_interrupt();
+
                     self.rx_client.map(|client| {
                         if let Some(buf) = self.rx_buffer.take() {
                             client.received_buffer(
                                 buf,
-                                self.rx_len.get(),
+                                self.rx_position.get(), // pass actual received length
                                 Ok(()),
                                 hil::uart::Error::None,
                             );
@@ -592,41 +588,69 @@ impl<'a> hil::uart::Transmit<'a> for Usart<'a> {
 
 impl hil::uart::Configure for Usart<'_> {
     fn configure(&self, params: hil::uart::Parameters) -> Result<(), ErrorCode> {
-        if params.baud_rate != 115200
-            || params.stop_bits != hil::uart::StopBits::One
-            || params.parity != hil::uart::Parity::None
-            || params.hw_flow_control
-            || params.width != hil::uart::Width::Eight
-        {
-            panic!(
-                "Currently we only support uart setting of 115200bps 8N1, no hardware flow control"
-            );
+        // Allowed sets
+        let ok_baud = params.baud_rate == 115200 || params.baud_rate == 1200;
+        let ok_stop = params.stop_bits == hil::uart::StopBits::One;
+        let ok_parity =
+            params.parity == hil::uart::Parity::None || params.parity == hil::uart::Parity::Even;
+        let ok_width =
+            params.width == hil::uart::Width::Eight || params.width == hil::uart::Width::Seven;
+        let ok_hw_flow = !params.hw_flow_control;
+
+        if !(ok_baud && ok_stop && ok_parity && ok_width && ok_hw_flow) {
+            panic!("Only supports for Console and SDI12");
         }
 
-        // Configure the word length - 0: 1 Start bit, 8 Data bits, n Stop bits
-        self.registers.cr1.modify(CR1::M0::CLEAR);
-        self.registers.cr1.modify(CR1::M1::CLEAR);
+        // Word length: handle 7 vs 8 later as needed
+        match params.width {
+            hil::uart::Width::Eight => {
+                self.registers.cr1.modify(CR1::M0::CLEAR);
+                self.registers.cr1.modify(CR1::M1::CLEAR);
+            }
+            hil::uart::Width::Seven => {
+                // Set M0/M1 according to reference manual for 7-bit words
+                // (adjust as required by the hardware)
+                self.registers.cr1.modify(CR1::M0::SET);
+                self.registers.cr1.modify(CR1::M1::CLEAR);
+            }
+            _ => {}
+        }
 
-        // Set the stop bit length - 00: 1 Stop bits
+        // Stop bits: already required to be One above
         self.registers.cr2.modify(CR2::STOP.val(0b00_u32));
 
-        // Set no parity
-        self.registers.cr1.modify(CR1::PCE::CLEAR);
+        // Parity
+        match params.parity {
+            hil::uart::Parity::None => {
+                self.registers.cr1.modify(CR1::PCE::CLEAR);
+            }
+            hil::uart::Parity::Even => {
+                self.registers.cr1.modify(CR1::PCE::SET);
+                self.registers.cr1.modify(CR1::PS::CLEAR); // PS = 0 => Even
+            }
+            _ => {}
+        }
 
-        // Set the baud rate. By default OVER8 is 0 (oversampling by 16) and
-        // PCLK1 is at 4Mhz. The desired baud rate is 115.2KBps. So according
-        // to Table 159 of reference manual, the value for BRR is 138.8888 (0x8A)
-        // DIV_Fraction = 0x5
-        // DIV_Mantissa = 0x4
-        self.registers.brr.modify(BRR::BRR.val(0x22_u32));
+        // Baud: choose BRR based on requested baud and clock assumptions.
+        // Example values assume PCLK1==4_000_000 and OVER8==0 (oversampling by 16).
+        match params.baud_rate {
+            115200 => {
+                // existing BRR for 115200 used previously
+                self.registers.brr.modify(BRR::BRR.val(0x22_u32));
+            }
+            1200 => {
+                // 4_000_000 / 1200 ~= 3333.333 ; choose nearest mantissa/fraction as needed
+                self.registers.brr.modify(BRR::BRR.val(3333_u32));
+            }
+            _ => {
+                // Shouldn't occur because of earlier check
+                return Err(ErrorCode::NOSUPPORT);
+            }
+        }
 
-        // Enable transmit block
+        // Enable transmit/receive and USART
         self.registers.cr1.modify(CR1::TE::SET);
-
-        // Enable receive block
         self.registers.cr1.modify(CR1::RE::SET);
-
-        // Enable USART
         self.registers.cr1.modify(CR1::UE::SET);
 
         Ok(())
@@ -643,6 +667,12 @@ impl<'a> hil::uart::Receive<'a> for Usart<'a> {
         rx_buffer: &'static mut [u8],
         rx_len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
+        // flush any overrun data and clear ORE flag
+        while self.registers.isr.is_set(ISR::RXNE) {
+            let _ = self.registers.rdr.get();
+        }
+        self.registers.icr.modify(ICR::ORECF::SET);
+
         if self.rx_status.get() == USARTStateRX::Idle {
             if rx_len <= rx_buffer.len() {
                 self.rx_buffer.put(Some(rx_buffer));

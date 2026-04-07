@@ -15,12 +15,16 @@
 use core::ptr::addr_of_mut;
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
+use capsules_extra::sdi12_ents::Sdi12Ents;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::debug::PanicResources;
 use kernel::hil::gpio::Output;
 use kernel::hil::led::LedLow;
+use kernel::hil::sdi12::{Receive as Sdi12Receive, Transmit as Sdi12Transmit};
+use kernel::hil::time::Alarm;
 use kernel::hil::time::Counter;
+use kernel::hil::uart::{Receive, Transmit};
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
@@ -56,6 +60,8 @@ static mut CHIP: Option<&'static stm32wle5jc::chip::Stm32wle5xx<Stm32wle5jcDefau
 static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
     None;
 
+static mut SDI12_TX_BUF: [u8; 64] = [0; 64];
+static mut SDI12_RX_BUF: [u8; 64] = [0; 64];
 type ProcessPrinterInUse = capsules_system::process_printer::ProcessPrinterText;
 
 /// Resources for when a board panics used by io.rs.
@@ -100,6 +106,14 @@ struct SeeedStudioLoraE5Mini {
         'static,
         stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio<'static>,
     >,
+    sdi12_ents: &'static Sdi12Ents<
+        'static,
+        stm32wle5jc::sdi12::Sdi12<
+            'static,
+            stm32wle5jc::usart::Usart<'static>,
+            VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+        >,
+    >,
     i2c_master: &'static capsules_core::i2c_master::I2CMasterDriver<
         'static,
         stm32wle5jc::i2c::I2C<'static>,
@@ -118,6 +132,9 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Mini {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             LORA_SPI_DRIVER_NUM => f(Some(self.lora_spi_controller)),
             LORA_GPIO_DRIVER_NUM => f(Some(self.lora_gpio)),
+            capsules_extra::sdi12_ents::DRIVER_NUM => f(Some(self.sdi12_ents)),
+            // kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
+            // capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
             capsules_core::i2c_master::DRIVER_NUM => f(Some(self.i2c_master)),
             _ => f(None),
         }
@@ -256,12 +273,13 @@ pub unsafe fn main() {
     let gpio_ports = &base_peripherals.gpio_ports;
     gpio_ports.get_port_from_port_id(PortId::B).enable_clock();
     gpio_ports.get_port_from_port_id(PortId::A).enable_clock();
+    gpio_ports.get_port_from_port_id(PortId::C).enable_clock();
 
     //--------------------------------------------------------------------
     // Usart
     //--------------------------------------------------------------------
     base_peripherals.usart1.enable_clock();
-    // base_peripherals.usart2.enable_clock();
+    base_peripherals.usart2.enable_clock();
 
     // USART1: PB6=TX , PB7=RX
     gpio_ports.get_pin(PinId::PB06).map(|pin| {
@@ -274,7 +292,21 @@ pub unsafe fn main() {
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
     });
 
-    let uart_mux = components::console::UartMuxComponent::new(&base_peripherals.usart1, 115200)
+    let uart_mux_1 = components::console::UartMuxComponent::new(&base_peripherals.usart1, 115200)
+        .finalize(components::uart_mux_component_static!());
+
+    // USART2: PA2=TX , PA3=RX
+    gpio_ports.get_pin(PinId::PA02).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
+    });
+
+    gpio_ports.get_pin(PinId::PA03).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
+    });
+
+    let uart_mux_2 = components::console::UartMuxComponent::new(&base_peripherals.usart2, 1200)
         .finalize(components::uart_mux_component_static!());
 
     (*addr_of_mut!(io::WRITER)).set_initialized();
@@ -300,15 +332,21 @@ pub unsafe fn main() {
     let console = components::console::ConsoleComponent::new(
         board_kernel,
         capsules_core::console::DRIVER_NUM,
-        uart_mux,
+        uart_mux_1,
     )
     .finalize(components::console_component_static!());
+
+    let uart_device = static_init!(
+        capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
+        capsules_core::virtualizers::virtual_uart::UartDevice::new(uart_mux_2, true)
+    );
+    uart_device.setup();
 
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new::<
         <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
     >(
-        uart_mux,
+        uart_mux_1,
         create_capability!(capabilities::SetDebugWriterCapability),
     )
     .finalize(components::debug_writer_component_static!());
@@ -422,7 +460,7 @@ pub unsafe fn main() {
     //--------------------------------------------------------------------
     let process_console = components::process_console::ProcessConsoleComponent::new(
         board_kernel,
-        uart_mux,
+        uart_mux_1,
         mux_alarm,
         process_printer,
         Some(cortexm4::support::reset),
@@ -435,6 +473,58 @@ pub unsafe fn main() {
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
+    let sdi12_command_pin = gpio_ports.get_pin(PinId::PC01).unwrap();
+    let virtual_alarm = static_init!(
+        VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+        VirtualMuxAlarm::new(mux_alarm)
+    );
+    virtual_alarm.setup();
+
+    let sdi12_usart_pin = gpio_ports.get_pin(PinId::PA02).unwrap();
+
+    let sdi12_driver = static_init!(
+        stm32wle5jc::sdi12::Sdi12<
+            'static,
+            stm32wle5jc::usart::Usart<'static>,
+            VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+        >,
+        stm32wle5jc::sdi12::Sdi12::new(
+            &base_peripherals.usart2,
+            sdi12_usart_pin,
+            sdi12_command_pin,
+            virtual_alarm,
+        )
+    );
+    //TODO: figure out why there needs to be a uart_device for the uart to transmit
+    // but the peripheral needs to be set to the transmit client for that to work
+    virtual_alarm.set_alarm_client(sdi12_driver);
+    //uart_device.set_transmit_client(sdi12_driver);
+    base_peripherals.usart2.set_transmit_client(sdi12_driver);
+    base_peripherals.usart2.set_receive_client(sdi12_driver);
+
+    let sdi12_grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
+    let sdi12_driver_process_grant =
+        board_kernel.create_grant(capsules_extra::sdi12_ents::DRIVER_NUM, &sdi12_grant_cap);
+
+    let sdi12_ents = static_init!(
+        Sdi12Ents<
+            'static,
+            stm32wle5jc::sdi12::Sdi12<
+                'static,
+                stm32wle5jc::usart::Usart<'static>,
+                VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+            >,
+        >,
+        capsules_extra::sdi12_ents::Sdi12Ents::new(
+            unsafe { &mut *addr_of_mut!(SDI12_TX_BUF) },
+            unsafe { &mut *addr_of_mut!(SDI12_RX_BUF) },
+            sdi12_driver,
+            sdi12_driver_process_grant
+        ),
+    );
+    sdi12_driver.set_transmit_client(sdi12_ents);
+    sdi12_driver.set_receive_client(sdi12_ents);
+
     let seeed_studio_lora_e5_mini = SeeedStudioLoraE5Mini {
         scheduler,
         systick: cortexm4::systick::SysTick::new_with_calibration(
@@ -445,6 +535,7 @@ pub unsafe fn main() {
         alarm,
         lora_spi_controller,
         lora_gpio,
+        sdi12_ents,
         i2c_master,
     };
 

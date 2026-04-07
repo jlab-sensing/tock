@@ -90,6 +90,7 @@ pub mod rf233;
 pub mod rf233_const;
 pub mod screen;
 pub mod sdcard;
+pub mod sdi12_ents;
 pub mod servo;
 pub mod seven_segment;
 pub mod sg90;

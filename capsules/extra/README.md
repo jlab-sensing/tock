@@ -111,6 +111,7 @@ These capsules provide a `Driver` interface for common MCU peripherals.
 - **[CRC](src/crc.rs)**: CRC calculation.
 - **[DAC](src/dac.rs)**: Digital to analog conversion.
 - **[CAN](src/can.rs)**: CAN communication.
+- **[SDI12 ENTS](src/sdi12_ents.rs)**: SDI12 Communication across the ENTS board
 
 
 Helpful Userspace Capsules
