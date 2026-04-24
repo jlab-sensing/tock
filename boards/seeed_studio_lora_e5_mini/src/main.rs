@@ -445,7 +445,7 @@ pub unsafe fn main() {
     // RTC
     //--------------------------------------------------------------------
     if let Err(e) = base_peripherals.rtc.rtc_init() {
-        debug!("RTC init failed: {:?}", e);
+        panic!("RTC init failed: {:?}", e);
     }
 
     let rtc = base_peripherals.rtc;
@@ -459,25 +459,9 @@ pub unsafe fn main() {
         stm32wle5jc::rtc::Rtc<'static>
     ));
 
-    // Uncomment to run RTC test sequence (GET→SET→GET, alarm, wakeup timer).
-    // Note: this replaces date_time as the RTC client — comment out the
-    // DateTimeComponent block above when testing.
-    // let rtc_test_client = static_init!(
-    //     test::rtc_dummy::RtcTestClient<'static>,
-    //     test::rtc_dummy::RtcTestClient::new()
-    // );
-    // rtc_test_client.set_rtc(rtc);
-    // rtc.set_client(rtc_test_client);
-    // let rtc_ext_client = static_init!(
-    //     test::rtc_dummy::RtcExtendedTestClient<'static>,
-    //     test::rtc_dummy::RtcExtendedTestClient::new()
-    // );
-    // rtc_ext_client.set_rtc(rtc);
-    // rtc_ext_client.set_test_client(rtc_test_client);
-    // rtc_test_client.set_ext_client(rtc_ext_client);
-    // rtc.set_alarm_client(rtc_ext_client);
-    // rtc.set_wakeup_client(rtc_ext_client);
-    // test::rtc_dummy::run_complete_rtc_test(rtc, rtc_test_client, rtc_ext_client);
+    // Note: this replaces date_time as the RTC client — comment out the `DateTimeComponent``
+    // block above when testing. Uncomment to run RTC test sequence.
+    // test::rtc_dummy::run_complete_rtc_test(rtc);
 
     //--------------------------------------------------------------------
     // PROCESS CONSOLE

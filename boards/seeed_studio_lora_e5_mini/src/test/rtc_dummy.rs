@@ -17,10 +17,10 @@
 //! 5. Wakeup timer fires 5 times every 2 seconds
 
 use core::cell::Cell;
-use kernel::debug;
 use kernel::hil::date_time::{DateTime, DateTimeClient, DateTimeValues, DayOfWeek, Month};
 use kernel::utilities::cells::OptionalCell;
 use kernel::ErrorCode;
+use kernel::{debug, static_init};
 
 use stm32wle5jc::rtc::{
     AlarmId, AlarmMask, AlarmTime, Rtc, RtcAlarmClient, RtcWakeupClient, WakeupClockSource,
@@ -362,14 +362,27 @@ fn month_to_u8(month: Month) -> u8 {
 /// * `rtc` - Reference to the RTC driver
 /// * `test_client` - Reference to the datetime test client
 /// * `ext_client` - Reference to the extended test client
-pub fn run_complete_rtc_test<'a>(
-    _rtc: &'a Rtc<'a>,
-    test_client: &'a RtcTestClient<'a>,
-    ext_client: &'a RtcExtendedTestClient<'a>,
-) {
+pub fn run_complete_rtc_test(rtc: &'static Rtc<'static>) {
     debug!("[RTC] Starting comprehensive test (GET->SET->GET, alarm @s15, 5x wakeup @2s)");
-    ext_client.set_alarm_target(15);
-    test_client.start_get_set_get_test();
+
+    // NOTE: using unsafe here to quickly create a static reference for test client since need
+    // to be static for purpose of set client methods.
+
+    let rtc_test_client = unsafe { static_init!(RtcTestClient, RtcTestClient::new()) };
+    rtc_test_client.set_rtc(rtc);
+    rtc.set_client(rtc_test_client);
+
+    let rtc_ext_client =
+        unsafe { static_init!(RtcExtendedTestClient, RtcExtendedTestClient::new()) };
+    rtc_ext_client.set_rtc(rtc);
+    rtc_ext_client.set_test_client(rtc_test_client);
+    rtc_test_client.set_ext_client(rtc_ext_client);
+
+    rtc.set_alarm_client(rtc_ext_client);
+    rtc.set_wakeup_client(rtc_ext_client);
+
+    rtc_ext_client.set_alarm_target(15);
+    rtc_test_client.start_get_set_get_test();
 }
 
 /// Start the alarm test (called after GET → SET → GET completes)

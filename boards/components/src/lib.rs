@@ -80,8 +80,6 @@ pub mod pwm;
 pub mod rainfall;
 pub mod rf233;
 pub mod rng;
-pub mod rtc;
-pub mod rtc_test;
 pub mod sched;
 pub mod screen;
 pub mod screen_adapters;
