@@ -28,7 +28,6 @@ use kernel::hil::screen::Screen;
 use kernel::hil::symmetric_encryption::AES128;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::utilities::single_thread_value::SingleThreadValue;
 #[allow(unused_imports)]
 use kernel::{capabilities, create_capability, debug, debug_gpio, debug_verbose, static_init};
@@ -86,6 +85,8 @@ type Ieee802154Driver = components::ieee802154::Ieee802154ComponentType<
     nrf52840::aes::AesECB<'static>,
 >;
 
+type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
+
 /// Supported drivers by the platform
 pub struct Platform {
     temperature: &'static TemperatureDriver,
@@ -123,7 +124,7 @@ pub struct Platform {
         >,
     >,
     screen: &'static capsules_extra::screen::screen::Screen<'static>,
-    scheduler: &'static RoundRobinSched<'static>,
+    scheduler: &'static SchedulerInUse,
     systick: cortexm4::systick::SysTick,
 }
 
@@ -156,7 +157,7 @@ impl KernelResources<nrf52840::chip::NRF52<'static, Nrf52840DefaultPeripherals<'
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
-    type Scheduler = RoundRobinSched<'static>;
+    type Scheduler = SchedulerInUse;
     type SchedulerTimer = cortexm4::systick::SysTick;
     type WatchDog = ();
     type ContextSwitchCallback = ();
@@ -409,8 +410,8 @@ pub unsafe fn start() -> (
     sensors_i2c_bus.register();
 
     base_peripherals.twi1.configure(
-        nrf52840::pinmux::Pinmux::new(I2C_TEMP_SCL_PIN as u32),
-        nrf52840::pinmux::Pinmux::new(I2C_TEMP_SDA_PIN as u32),
+        nrf52840::pinmux::Pinmux::new(I2C_TEMP_SCL_PIN),
+        nrf52840::pinmux::Pinmux::new(I2C_TEMP_SDA_PIN),
     );
     base_peripherals.twi1.set_master_client(sensors_i2c_bus);
 
@@ -479,9 +480,9 @@ pub unsafe fn start() -> (
             .expect("SPIM2 set rate");
 
         base_peripherals.spim2.configure(
-            nrf52840::pinmux::Pinmux::new(Pin::P0_27 as u32),
-            nrf52840::pinmux::Pinmux::new(Pin::P0_28 as u32),
-            nrf52840::pinmux::Pinmux::new(Pin::P0_26 as u32),
+            nrf52840::pinmux::Pinmux::new(Pin::P0_27),
+            nrf52840::pinmux::Pinmux::new(Pin::P0_28),
+            nrf52840::pinmux::Pinmux::new(Pin::P0_26),
         );
 
         let disp_pin = &nrf52840_peripherals.gpio_port[Pin::P0_07];

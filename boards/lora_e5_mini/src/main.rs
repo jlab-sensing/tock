@@ -22,8 +22,6 @@ use kernel::hil::gpio::{Configure, Output};
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::process::ProcessArray;
-use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::utilities::single_thread_value::SingleThreadValue;
 use kernel::{create_capability, debug, static_init};
 use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
@@ -47,16 +45,9 @@ pub type ChipHw = stm32wle5jc::chip::Stm32wle5xx<
 // Number of concurrent processes this platform supports.
 const NUM_PROCS: usize = 4;
 
-// Actual memory for holding the active process structures.
-static mut PROCESSES: Option<&'static ProcessArray<NUM_PROCS>> = None;
-
-static mut CHIP: Option<&'static stm32wle5jc::chip::Stm32wle5xx<Stm32wle5jcDefaultPeripherals>> =
-    None;
-
-static mut PROCESS_PRINTER: Option<&'static capsules_system::process_printer::ProcessPrinterText> =
-    None;
-
 type ProcessPrinterInUse = capsules_system::process_printer::ProcessPrinterText;
+
+type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
 
 /// Resources for when a board panics used by io.rs.
 static PANIC_RESOURCES: SingleThreadValue<PanicResources<ChipHw, ProcessPrinterInUse>> =
@@ -76,8 +67,8 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
-struct SeeedStudioLoraE5Mini {
-    scheduler: &'static RoundRobinSched<'static>,
+struct LoraE5Mini {
+    scheduler: &'static SchedulerInUse,
     systick: cortexm4::systick::SysTick,
     console: &'static capsules_core::console::Console<'static>,
     led: &'static capsules_core::led::LedDriver<
@@ -107,7 +98,7 @@ struct SeeedStudioLoraE5Mini {
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
-impl SyscallDriverLookup for SeeedStudioLoraE5Mini {
+impl SyscallDriverLookup for LoraE5Mini {
     fn with_driver<F, R>(&self, driver_num: usize, f: F) -> R
     where
         F: FnOnce(Option<&dyn kernel::syscall::SyscallDriver>) -> R,
@@ -130,12 +121,12 @@ impl
             'static,
             stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals<'static>,
         >,
-    > for SeeedStudioLoraE5Mini
+    > for LoraE5Mini
 {
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
-    type Scheduler = RoundRobinSched<'static>;
+    type Scheduler = SchedulerInUse;
     type SchedulerTimer = cortexm4::systick::SysTick;
     type WatchDog = ();
     type ContextSwitchCallback = ();
@@ -232,7 +223,6 @@ pub unsafe fn main() {
     // Create an array to hold process references.
     let processes = components::process_array::ProcessArrayComponent::new()
         .finalize(components::process_array_component_static!(NUM_PROCS));
-    PROCESSES = Some(processes);
 
     // Setup space to store the core kernel data structure.
     let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(processes.as_slice()));
@@ -241,8 +231,6 @@ pub unsafe fn main() {
         stm32wle5jc::chip::Stm32wle5xx<Stm32wle5jcDefaultPeripherals>,
         stm32wle5jc::chip::Stm32wle5xx::new(peripherals)
     );
-
-    CHIP = Some(chip);
 
     setup_peripherals(&base_peripherals.tim2, &base_peripherals.subghz_spi);
 
@@ -315,7 +303,6 @@ pub unsafe fn main() {
 
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
-    PROCESS_PRINTER = Some(process_printer);
 
     //--------------------------------------------------------------------
     // LED
@@ -421,7 +408,7 @@ pub unsafe fn main() {
     });
 
     // Uncomment to run I2C scan test
-    //test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
+    // test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
 
     //--------------------------------------------------------------------
     // PROCESS CONSOLE
@@ -441,7 +428,7 @@ pub unsafe fn main() {
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
-    let seeed_studio_lora_e5_mini = SeeedStudioLoraE5Mini {
+    let lora_e5_mini = LoraE5Mini {
         scheduler,
         systick: cortexm4::systick::SysTick::new_with_calibration(
             (MSI_FREQUENCY_MHZ * 1_000_000) as u32,
@@ -493,7 +480,7 @@ pub unsafe fn main() {
     .run();*/
 
     board_kernel.kernel_loop(
-        &seeed_studio_lora_e5_mini,
+        &lora_e5_mini,
         chip,
         None::<&kernel::ipc::IPC<2>>,
         &main_loop_capability,

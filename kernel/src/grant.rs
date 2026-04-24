@@ -279,7 +279,7 @@ impl<'a> EnteredGrantKernelManagedLayout<'a> {
         process: &'a dyn Process,
         grant_num: usize,
     ) -> Self {
-        let counters_ptr = base_ptr.as_ptr() as *mut usize;
+        let counters_ptr: *mut usize = base_ptr.as_ptr().cast();
         let counters_val = counters_ptr.read();
 
         // Parse the counters field for each of the fields
@@ -287,9 +287,9 @@ impl<'a> EnteredGrantKernelManagedLayout<'a> {
 
         // Skip over the counter usize, then the stored array of `SavedAllowRo`
         // items and `SavedAllowRw` items.
-        let upcalls_array = counters_ptr.add(1) as *mut SavedUpcall;
-        let allow_ro_array = upcalls_array.add(upcalls_num as usize) as *mut SavedAllowRo;
-        let allow_rw_array = allow_ro_array.add(allow_ro_num as usize) as *mut SavedAllowRw;
+        let upcalls_array: *mut SavedUpcall = counters_ptr.add(1).cast();
+        let allow_ro_array: *mut SavedAllowRo = upcalls_array.add(upcalls_num as usize).cast();
+        let allow_rw_array: *mut SavedAllowRw = allow_ro_array.add(allow_ro_num as usize).cast();
 
         Self {
             process,
@@ -319,7 +319,7 @@ impl<'a> EnteredGrantKernelManagedLayout<'a> {
         process: &'a dyn Process,
         grant_num: usize,
     ) -> Self {
-        let counters_ptr = base_ptr.as_ptr() as *mut usize;
+        let counters_ptr: *mut usize = base_ptr.as_ptr().cast();
 
         // Create the counters usize value by correctly packing the various
         // counts into 8 bit fields.
@@ -327,9 +327,10 @@ impl<'a> EnteredGrantKernelManagedLayout<'a> {
             u32::from_be_bytes([0, allow_rw_num_val.0, allow_ro_num_val.0, upcalls_num_val.0])
                 as usize;
 
-        let upcalls_array = counters_ptr.add(1) as *mut SavedUpcall;
-        let allow_ro_array = upcalls_array.add(upcalls_num_val.0.into()) as *mut SavedAllowRo;
-        let allow_rw_array = allow_ro_array.add(allow_ro_num_val.0.into()) as *mut SavedAllowRw;
+        let upcalls_array: *mut SavedUpcall = counters_ptr.add(1).cast();
+        let allow_ro_array: *mut SavedAllowRo = upcalls_array.add(upcalls_num_val.0.into()).cast();
+        let allow_rw_array: *mut SavedAllowRw =
+            allow_ro_array.add(allow_ro_num_val.0.into()).cast();
 
         counters_ptr.write(counter);
         write_default_array(upcalls_array, upcalls_num_val.0.into());
@@ -507,7 +508,7 @@ impl Drop for EnteredGrantKernelManagedLayout<'_> {
 /// grant for a specific process.
 ///
 /// The [`GrantData`] type is templated on `T`, the actual type of the object in
-/// the grant. [`GrantData'] holds a mutable reference to the type, allowing
+/// the grant. [`GrantData`] holds a mutable reference to the type, allowing
 /// users access to the object in process memory.
 ///
 /// Capsules gain access to a [`GrantData`] object by calling
@@ -1558,7 +1559,8 @@ impl<T> CustomGrant<T> {
                 // App is valid.
 
                 // Now try to access the custom grant memory.
-                let grant_ptr = process.enter_custom_grant(self.identifier)?;
+                let grant_ptr: *mut u8 = process.enter_custom_grant(self.identifier)?;
+                let grant_ptr: *mut T = grant_ptr.cast();
 
                 // # Safety
                 //
@@ -1569,7 +1571,7 @@ impl<T> CustomGrant<T> {
                 // other references because the only way to create a reference
                 // is using this `enter()` function, and it can only be called
                 // once (because of the `&mut self` requirement).
-                let custom_grant = unsafe { &mut *(grant_ptr as *mut T) };
+                let custom_grant = unsafe { &mut *grant_ptr };
                 let borrowed = GrantData::new(custom_grant);
                 Ok(fun(borrowed))
             })

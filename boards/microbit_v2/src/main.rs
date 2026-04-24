@@ -17,7 +17,6 @@ use kernel::component::Component;
 use kernel::debug::PanicResources;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::utilities::single_thread_value::SingleThreadValue;
 
 #[allow(unused_imports)]
@@ -86,6 +85,8 @@ type RngDriver = components::rng::RngComponentType<nrf52833::trng::Trng<'static>
 type Ieee802154RawDriver =
     components::ieee802154::Ieee802154RawComponentType<nrf52833::ieee802154_radio::Radio<'static>>;
 
+type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
+
 /// Supported drivers by the platform
 pub struct MicroBit {
     ble_radio: &'static capsules_extra::ble_advertising_driver::BLE<
@@ -144,7 +145,7 @@ pub struct MicroBit {
     app_flash: &'static capsules_extra::app_flash_driver::AppFlash<'static>,
     sound_pressure: &'static capsules_extra::sound_pressure::SoundPressureSensor<'static>,
 
-    scheduler: &'static RoundRobinSched<'static>,
+    scheduler: &'static SchedulerInUse,
     systick: cortexm4::systick::SysTick,
 }
 
@@ -183,7 +184,7 @@ impl KernelResources<nrf52833::chip::NRF52<'static, Nrf52833DefaultPeripherals<'
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
-    type Scheduler = RoundRobinSched<'static>;
+    type Scheduler = SchedulerInUse;
     type SchedulerTimer = cortexm4::systick::SysTick;
     type WatchDog = ();
     type ContextSwitchCallback = ();
@@ -376,7 +377,7 @@ unsafe fn start() -> (
 
     let virtual_pwm_buzzer = components::pwm::PwmPinUserComponent::new(
         mux_pwm,
-        nrf52833::pinmux::Pinmux::new(SPEAKER_PIN as u32),
+        nrf52833::pinmux::Pinmux::new(SPEAKER_PIN),
     )
     .finalize(components::pwm_pin_user_component_static!(
         nrf52833::pwm::Pwm
@@ -430,13 +431,11 @@ unsafe fn start() -> (
 
     virtual_alarm_buzzer.set_alarm_client(pwm_buzzer);
 
-    let virtual_pwm_driver = components::pwm::PwmPinUserComponent::new(
-        mux_pwm,
-        nrf52833::pinmux::Pinmux::new(GPIO_P8 as u32),
-    )
-    .finalize(components::pwm_pin_user_component_static!(
-        nrf52833::pwm::Pwm
-    ));
+    let virtual_pwm_driver =
+        components::pwm::PwmPinUserComponent::new(mux_pwm, nrf52833::pinmux::Pinmux::new(GPIO_P8))
+            .finalize(components::pwm_pin_user_component_static!(
+                nrf52833::pwm::Pwm
+            ));
 
     let pwm =
         components::pwm::PwmDriverComponent::new(board_kernel, capsules_extra::pwm::DRIVER_NUM)
@@ -447,8 +446,8 @@ unsafe fn start() -> (
     //--------------------------------------------------------------------------
 
     base_peripherals.uarte0.initialize(
-        nrf52::pinmux::Pinmux::new(UART_TX_PIN as u32),
-        nrf52::pinmux::Pinmux::new(UART_RX_PIN as u32),
+        nrf52::pinmux::Pinmux::new(UART_TX_PIN),
+        nrf52::pinmux::Pinmux::new(UART_RX_PIN),
         None,
         None,
     );
@@ -489,8 +488,8 @@ unsafe fn start() -> (
     //--------------------------------------------------------------------------
 
     base_peripherals.twi1.configure(
-        nrf52833::pinmux::Pinmux::new(I2C_SCL_PIN as u32),
-        nrf52833::pinmux::Pinmux::new(I2C_SDA_PIN as u32),
+        nrf52833::pinmux::Pinmux::new(I2C_SCL_PIN),
+        nrf52833::pinmux::Pinmux::new(I2C_SDA_PIN),
     );
 
     let sensors_i2c_bus = components::i2c::I2CMuxComponent::new(&base_peripherals.twi1, None)

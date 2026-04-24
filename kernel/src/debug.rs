@@ -63,6 +63,7 @@
 //!    }
 //!
 //!    fn flush(&self, _writer: &mut dyn IoWrite) { }
+//! }
 //! ```
 //! And instantiate it in the main board file:
 //!
@@ -72,11 +73,13 @@
 //!     utils::SyncDebugWriter
 //! );
 //!
+//! kernel::debug::initialize_debug_writer_wrapper::<
+//!     <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider
+//! >();
+//!
 //! kernel::debug::set_debug_writer_wrapper(
-//!     static_init!(
-//!         kernel::debug::DebugWriterWrapper,
-//!         kernel::debug::DebugWriterWrapper::new(debug_writer)
-//!     ),
+//!     debug_writer,
+//!     create_capability!(kernel::capabilities::SetDebugWriterCapability)
 //! );
 //! ```
 //!
@@ -160,7 +163,7 @@ pub struct PanicResources<C: Chip + 'static, PP: ProcessPrinter + 'static> {
 }
 
 impl<C: Chip, PP: ProcessPrinter> PanicResources<C, PP> {
-    /// Create a new [`BoardPanic`] with nothing stored.
+    /// Create a new [`PanicResources`] with nothing stored.
     pub const fn new() -> Self {
         Self {
             processes: MapCell::empty(),
@@ -432,7 +435,7 @@ pub trait DebugWriter {
 
     /// Flush any buffered bytes to the provided output writer.
     ///
-    /// `flush()` should be used to write an buffered bytes to a new `writer`
+    /// `flush()` should be used to write any buffered bytes to a new `writer`
     /// instead of the internal writer that `publish()` would use.
     fn flush(&self, writer: &mut dyn IoWrite);
 }

@@ -393,9 +393,12 @@ impl<'a> Lpuart<'a> {
     /// Set the DMA channel for transferring data from this UART peripheral
     pub fn set_tx_dma_channel(&'static self, dma_channel: &'static dma::DmaChannel) {
         dma_channel.set_client(self, self.tx_dma_source);
+        let destination: *const ReadWrite<u32, DATA::Register> =
+            core::ptr::addr_of!(self.registers.data);
+        let destination: *const u8 = destination.cast();
         unsafe {
             // Safety: pointing to static memory
-            dma_channel.set_destination(core::ptr::addr_of!(self.registers.data) as *const u8);
+            dma_channel.set_destination(destination);
         }
         dma_channel.set_interrupt_on_completion(true);
         dma_channel.set_disable_on_completion(true);
@@ -405,9 +408,12 @@ impl<'a> Lpuart<'a> {
     /// Set the DMA channel used for receiving data from this UART peripheral
     pub fn set_rx_dma_channel(&'static self, dma_channel: &'static dma::DmaChannel) {
         dma_channel.set_client(self, self.rx_dma_source);
+        let destination: *const ReadWrite<u32, DATA::Register> =
+            core::ptr::addr_of!(self.registers.data);
+        let destination: *const u8 = destination.cast();
         unsafe {
             // Safety: pointing to static memory
-            dma_channel.set_source(core::ptr::addr_of!(self.registers.data) as *const u8);
+            dma_channel.set_source(destination);
         }
         dma_channel.set_interrupt_on_completion(true);
         dma_channel.set_disable_on_completion(true);

@@ -20,7 +20,6 @@ use kernel::hil::led::LedHigh;
 use kernel::hil::spi::SpiMaster;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::utilities::single_thread_value::SingleThreadValue;
 #[allow(unused_imports)]
 use kernel::{create_capability, debug, debug_gpio, debug_verbose, static_init};
@@ -95,6 +94,8 @@ type RngDriver = components::rng::RngComponentType<nrf52840::trng::Trng<'static>
 
 type NonvolatileDriver = components::nonvolatile_storage::NonvolatileStorageComponentType;
 
+type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
+
 /// Supported drivers by the platform
 pub struct Platform {
     console: &'static capsules_core::console::Console<'static>,
@@ -124,7 +125,7 @@ pub struct Platform {
             nrf52840::spi::SPIM<'static>,
         >,
     >,
-    scheduler: &'static RoundRobinSched<'static>,
+    scheduler: &'static SchedulerInUse,
     systick: cortexm4::systick::SysTick,
 }
 
@@ -158,7 +159,7 @@ impl KernelResources<nrf52::chip::NRF52<'static, Nrf52840DefaultPeripherals<'sta
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
-    type Scheduler = RoundRobinSched<'static>;
+    type Scheduler = SchedulerInUse;
     type SchedulerTimer = cortexm4::systick::SysTick;
     type WatchDog = ();
     type ContextSwitchCallback = ();
@@ -317,8 +318,8 @@ pub unsafe fn start() -> (
     //--------------------------------------------------------------------------
 
     base_peripherals.uarte0.initialize(
-        nrf52::pinmux::Pinmux::new(UART_TX_PIN as u32),
-        nrf52::pinmux::Pinmux::new(UART_RX_PIN as u32),
+        nrf52::pinmux::Pinmux::new(UART_TX_PIN),
+        nrf52::pinmux::Pinmux::new(UART_RX_PIN),
         None,
         None,
     );
@@ -355,8 +356,8 @@ pub unsafe fn start() -> (
     let mux_i2c = components::i2c::I2CMuxComponent::new(&base_peripherals.twi1, None)
         .finalize(components::i2c_mux_component_static!(nrf52840::i2c::TWI));
     base_peripherals.twi1.configure(
-        nrf52840::pinmux::Pinmux::new(I2C_SCL_PIN as u32),
-        nrf52840::pinmux::Pinmux::new(I2C_SDA_PIN as u32),
+        nrf52840::pinmux::Pinmux::new(I2C_SCL_PIN),
+        nrf52840::pinmux::Pinmux::new(I2C_SDA_PIN),
     );
 
     let sht4x = components::sht4x::SHT4xComponent::new(
@@ -404,9 +405,9 @@ pub unsafe fn start() -> (
     ));
 
     base_peripherals.spim0.configure(
-        nrf52840::pinmux::Pinmux::new(SPI_MOSI_PIN as u32),
-        nrf52840::pinmux::Pinmux::new(SPI_MISO_PIN as u32),
-        nrf52840::pinmux::Pinmux::new(SPI_SCK_PIN as u32),
+        nrf52840::pinmux::Pinmux::new(SPI_MOSI_PIN),
+        nrf52840::pinmux::Pinmux::new(SPI_MISO_PIN),
+        nrf52840::pinmux::Pinmux::new(SPI_SCK_PIN),
     );
 
     base_peripherals

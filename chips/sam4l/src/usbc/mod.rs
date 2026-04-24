@@ -481,7 +481,8 @@ impl<'a> Usbc<'a> {
     ) {
         let e: usize = From::from(endpoint);
         let b: usize = From::from(bank);
-        let p = buf.as_ptr() as *const u8 as *mut u8;
+        let p: *const VolatileCell<u8> = buf.as_ptr();
+        let p: *mut u8 = p.cast_mut().cast();
 
         debug1!("Set Endpoint{}/Bank{} addr={:8?}", e, b, p);
         self.descriptors[e][b].set_addr(p);

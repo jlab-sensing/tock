@@ -24,7 +24,6 @@ use kernel::hil::led::LedLow;
 use kernel::hil::symmetric_encryption::AES128;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::utilities::single_thread_value::SingleThreadValue;
 #[allow(unused_imports)]
 use kernel::{capabilities, create_capability, debug, debug_gpio, debug_verbose, static_init};
@@ -95,6 +94,8 @@ type Ieee802154Driver = components::ieee802154::Ieee802154ComponentType<
     nrf52840::aes::AesECB<'static>,
 >;
 
+type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
+
 /// Supported drivers by the platform
 pub struct Platform {
     ble_radio: &'static capsules_extra::ble_advertising_driver::BLE<
@@ -126,7 +127,7 @@ pub struct Platform {
             nrf52840::rtc::Rtc<'static>,
         >,
     >,
-    scheduler: &'static RoundRobinSched<'static>,
+    scheduler: &'static SchedulerInUse,
     systick: cortexm4::systick::SysTick,
 }
 
@@ -159,7 +160,7 @@ impl KernelResources<nrf52840::chip::NRF52<'static, Nrf52840DefaultPeripherals<'
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
-    type Scheduler = RoundRobinSched<'static>;
+    type Scheduler = SchedulerInUse;
     type SchedulerTimer = cortexm4::systick::SysTick;
     type WatchDog = ();
     type ContextSwitchCallback = ();
@@ -555,8 +556,8 @@ pub unsafe fn start_particle_boron() -> (
         )
     );
     base_peripherals.twi1.configure(
-        nrf52840::pinmux::Pinmux::new(I2C_SCL_PIN as u32),
-        nrf52840::pinmux::Pinmux::new(I2C_SDA_PIN as u32),
+        nrf52840::pinmux::Pinmux::new(I2C_SCL_PIN),
+        nrf52840::pinmux::Pinmux::new(I2C_SDA_PIN),
     );
     base_peripherals.twi1.set_master_client(i2c_master_slave);
     base_peripherals.twi1.set_slave_client(i2c_master_slave);

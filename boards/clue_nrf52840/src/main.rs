@@ -27,7 +27,6 @@ use kernel::hil::time::Counter;
 use kernel::hil::usb::Client;
 use kernel::platform::chip::Chip;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::scheduler::round_robin::RoundRobinSched;
 use kernel::utilities::cells::MapCell;
 use kernel::utilities::single_thread_value::SingleThreadValue;
 #[allow(unused_imports)]
@@ -157,6 +156,8 @@ type Ieee802154Driver = components::ieee802154::Ieee802154ComponentType<
     nrf52840::aes::AesECB<'static>,
 >;
 
+type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
+
 /// Supported drivers by the platform
 pub struct Platform {
     ble_radio: &'static capsules_extra::ble_advertising_driver::BLE<
@@ -201,7 +202,7 @@ pub struct Platform {
     adc: &'static capsules_core::adc::AdcVirtualized<'static>,
     temperature: &'static TemperatureDriver,
     humidity: &'static HumidityDriver,
-    scheduler: &'static RoundRobinSched<'static>,
+    scheduler: &'static SchedulerInUse,
     systick: cortexm4::systick::SysTick,
 }
 
@@ -237,7 +238,7 @@ impl KernelResources<nrf52::chip::NRF52<'static, Nrf52840DefaultPeripherals<'sta
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
-    type Scheduler = RoundRobinSched<'static>;
+    type Scheduler = SchedulerInUse;
     type SchedulerTimer = cortexm4::systick::SysTick;
     type WatchDog = ();
     type ContextSwitchCallback = ();
@@ -440,7 +441,7 @@ unsafe fn start() -> (
         capsules_core::virtualizers::virtual_pwm::PwmPinUser<'static, nrf52840::pwm::Pwm>,
         capsules_core::virtualizers::virtual_pwm::PwmPinUser::new(
             mux_pwm,
-            nrf52840::pinmux::Pinmux::new(SPEAKER_PIN as u32)
+            nrf52840::pinmux::Pinmux::new(SPEAKER_PIN)
         )
     );
     virtual_pwm_buzzer.add_to_mux();
@@ -625,8 +626,8 @@ unsafe fn start() -> (
     );
     kernel::deferred_call::DeferredCallClient::register(sensors_i2c_bus);
     base_peripherals.twi1.configure(
-        nrf52840::pinmux::Pinmux::new(I2C_SCL_PIN as u32),
-        nrf52840::pinmux::Pinmux::new(I2C_SDA_PIN as u32),
+        nrf52840::pinmux::Pinmux::new(I2C_SCL_PIN),
+        nrf52840::pinmux::Pinmux::new(I2C_SDA_PIN),
     );
     base_peripherals.twi1.set_master_client(sensors_i2c_bus);
 
@@ -675,9 +676,9 @@ unsafe fn start() -> (
         .finalize(components::spi_mux_component_static!(nrf52840::spi::SPIM));
 
     base_peripherals.spim0.configure(
-        nrf52840::pinmux::Pinmux::new(ST7789H2_MOSI as u32),
-        nrf52840::pinmux::Pinmux::new(ST7789H2_MISO as u32),
-        nrf52840::pinmux::Pinmux::new(ST7789H2_SCK as u32),
+        nrf52840::pinmux::Pinmux::new(ST7789H2_MOSI),
+        nrf52840::pinmux::Pinmux::new(ST7789H2_MISO),
+        nrf52840::pinmux::Pinmux::new(ST7789H2_SCK),
     );
 
     let bus = components::bus::SpiMasterBusComponent::new(

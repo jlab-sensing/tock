@@ -9,7 +9,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-tock-registers = "0.10.0"
+tock-registers.workspace = true
 kernel = { path = "../../kernel" }
 
 [lints]

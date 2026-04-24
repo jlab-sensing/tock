@@ -82,7 +82,6 @@ use kernel::hil::time::Counter;
 #[allow(unused_imports)]
 use kernel::hil::usb::Client;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
-use kernel::scheduler::round_robin::RoundRobinSched;
 #[allow(unused_imports)]
 use kernel::{capabilities, create_capability, debug, debug_gpio, debug_verbose, static_init};
 use nrf52840::gpio::Pin;
@@ -196,6 +195,8 @@ pub type Ieee802154Driver = components::ieee802154::Ieee802154ComponentType<
 /// Userspace EUI64 driver.
 pub type Eui64Driver = components::eui64::Eui64ComponentType;
 
+type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
+
 /// Supported drivers by the platform
 pub struct Platform {
     ble_radio: &'static capsules_extra::ble_advertising_driver::BLE<
@@ -239,7 +240,7 @@ pub struct Platform {
         >,
     >,
     kv_driver: &'static KVDriver,
-    scheduler: &'static RoundRobinSched<'static>,
+    scheduler: &'static SchedulerInUse,
     systick: cortexm4::systick::SysTick,
 }
 
@@ -272,7 +273,7 @@ impl KernelResources<ChipHw> for Platform {
     type SyscallDriverLookup = Self;
     type SyscallFilter = ();
     type ProcessFault = ();
-    type Scheduler = RoundRobinSched<'static>;
+    type Scheduler = SchedulerInUse;
     type SchedulerTimer = cortexm4::systick::SysTick;
     type WatchDog = ();
     type ContextSwitchCallback = ();
@@ -735,9 +736,9 @@ pub unsafe fn start_no_pconsole() -> (
     ));
 
     base_peripherals.spim0.configure(
-        nrf52840::pinmux::Pinmux::new(SPI_MOSI as u32),
-        nrf52840::pinmux::Pinmux::new(SPI_MISO as u32),
-        nrf52840::pinmux::Pinmux::new(SPI_CLK as u32),
+        nrf52840::pinmux::Pinmux::new(SPI_MOSI),
+        nrf52840::pinmux::Pinmux::new(SPI_MISO),
+        nrf52840::pinmux::Pinmux::new(SPI_CLK),
     );
 
     //--------------------------------------------------------------------------
@@ -832,8 +833,8 @@ pub unsafe fn start_no_pconsole() -> (
     ));
 
     base_peripherals.twi1.configure(
-        nrf52840::pinmux::Pinmux::new(I2C_SCL_PIN as u32),
-        nrf52840::pinmux::Pinmux::new(I2C_SDA_PIN as u32),
+        nrf52840::pinmux::Pinmux::new(I2C_SCL_PIN),
+        nrf52840::pinmux::Pinmux::new(I2C_SDA_PIN),
     );
     base_peripherals.twi1.set_speed(nrf52840::i2c::Speed::K400);
 
