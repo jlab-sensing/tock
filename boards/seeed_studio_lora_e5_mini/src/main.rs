@@ -133,8 +133,6 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Mini {
             LORA_SPI_DRIVER_NUM => f(Some(self.lora_spi_controller)),
             LORA_GPIO_DRIVER_NUM => f(Some(self.lora_gpio)),
             capsules_extra::sdi12_ents::DRIVER_NUM => f(Some(self.sdi12_ents)),
-            // kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
-            // capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
             capsules_core::i2c_master::DRIVER_NUM => f(Some(self.i2c_master)),
             _ => f(None),
         }
