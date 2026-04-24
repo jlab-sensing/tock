@@ -971,6 +971,9 @@ pub struct Rtc<'a> {
     /// RTC clock wrapper for clock management
     clock: RtcClock<'a>,
 
+    /// PWR peripheral reference for backup domain write access
+    pwr: &'a crate::pwr::Pwr,
+
     /// Client to notify when date/time operations complete
     client: OptionalCell<&'a dyn DateTimeClient>,
 
@@ -1010,10 +1013,11 @@ impl<'a> Rtc<'a> {
     /// - No pending deferred call task
     /// - Status set to Idle
     ///
-    pub fn new(clocks: &'a dyn Stm32wle5xxClocks) -> Self {
+    pub fn new(clocks: &'a dyn Stm32wle5xxClocks, pwr: &'a crate::pwr::Pwr) -> Self {
         Self {
             registers: RTC_BASE,
             clock: RtcClock::new(clocks),
+            pwr,
             client: OptionalCell::empty(),
             time: Cell::new(DateTimeValues {
                 year: 1970,
@@ -1085,6 +1089,9 @@ impl<'a> Rtc<'a> {
     /// * `Err(ErrorCode::FAIL)` - Failed to enter initialization mode
     ///
     pub fn rtc_init(&self) -> Result<(), ErrorCode> {
+        // Enable backup domain write access before any RTC/BDCR register writes
+        self.pwr.enable_backup_domain_access();
+
         // Enable RTC clock
         self.enable_clock();
 

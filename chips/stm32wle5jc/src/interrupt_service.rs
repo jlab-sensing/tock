@@ -14,20 +14,17 @@ impl<'a> Stm32wle5jcDefaultPeripherals<'a> {
         clocks: &'a crate::clocks::Clocks<'a, Stm32wle5jcSpecs>,
         exti: &'a crate::exti::Exti<'a>,
         syscfg: &'a crate::syscfg::Syscfg,
+        pwr: &'a stm32wle5xx::pwr::Pwr,
+        rtc: &'a stm32wle5xx::rtc::Rtc<'a>,
     ) -> Self {
         Self {
-            stm32wle: Stm32wle5xxDefaultPeripherals::new(clocks, exti, syscfg),
+            stm32wle: Stm32wle5xxDefaultPeripherals::new(clocks, exti, syscfg, pwr, rtc),
         }
     }
     // Necessary for setting up circular dependencies & registering deferred
     // calls
     pub fn init(&'static self) {
         self.stm32wle.setup_circular_deps();
-    }
-
-    /// Set the RTC peripheral reference for interrupt handling
-    pub fn set_rtc(&self, rtc: &'a crate::rtc::Rtc<'a>) {
-        self.stm32wle.set_rtc(rtc);
     }
 }
 impl kernel::platform::chip::InterruptService for Stm32wle5jcDefaultPeripherals<'_> {

@@ -6,17 +6,6 @@ use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::registers::{register_bitfields, ReadWrite};
 use kernel::utilities::StaticRef;
 
-/// PWR CR1 register for backup domain access control
-const PWR_CR1: StaticRef<ReadWrite<u32, PWR_CR1_REG::Register>> =
-    unsafe { StaticRef::new(0x5800_0400 as *const _) };
-
-register_bitfields![u32,
-    PWR_CR1_REG [
-        /// Disable backup domain write protection
-        DBP OFFSET(8) NUMBITS(1) [],
-    ],
-];
-
 /// Reset and clock control
 #[repr(C)]
 struct RccRegisters {
@@ -1457,25 +1446,22 @@ impl Rcc {
         self.registers.bdcr.is_set(BDCR::RTCEN)
     }
 
-    /// Enable RTC kernel clock with specified source
+    /// Enable RTC kernel clock with specified source.
+    ///
+    /// Backup domain write access (PWR CR1 DBP bit) must be enabled by the
+    /// caller before invoking this method.
     ///
     /// This method:
-    /// 1. Enables backup domain write access (PWR_CR1.DBP)
-    /// 2. Enables the RTC APB clock for register access
-    /// 3. Enables the appropriate clock source (LSI, LSE, or HSE/32)
-    /// 4. Waits for the clock source to be ready
-    /// 5. Selects the clock source for RTC
-    /// 6. Enables the RTC kernel clock
+    /// 1. Enables the RTC APB clock for register access
+    /// 2. Enables the appropriate clock source (LSI, LSE, or HSE/32)
+    /// 3. Waits for the clock source to be ready
+    /// 4. Selects the clock source for RTC
+    /// 5. Enables the RTC kernel clock
     ///
     /// # Arguments
     /// * `source` - The clock source to use for RTC
     ///
     pub fn enable_rtc_clock(&self, source: RtcClockSource) {
-        // Enable backup domain write access (required for BDCR register)
-        // the DBP bit in PWR_CR1 must be set to enable write access
-        // to RTC and backup registers
-        PWR_CR1.modify(PWR_CR1_REG::DBP::SET);
-
         // Enable RTC APB clock for CPU access to RTC registers
         self.enable_rtcapb_clock();
 

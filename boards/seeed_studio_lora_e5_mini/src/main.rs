@@ -1,6 +1,6 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2025.
+// Copyright Tock Contributors 2026.
 
 //! Board file for STM32WLE5JC Seeed Studio LoRa E5 HF mini development board.
 //!
@@ -19,7 +19,6 @@ use kernel::capabilities;
 use kernel::component::Component;
 use kernel::debug::PanicResources;
 use kernel::deferred_call::DeferredCallClient;
-use kernel::hil::date_time::DateTime;
 use kernel::hil::gpio::{Configure, Output};
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
@@ -106,6 +105,10 @@ struct SeeedStudioLoraE5Mini {
         'static,
         stm32wle5jc::i2c::I2C<'static>,
     >,
+    date_time: &'static capsules_extra::date_time::DateTimeCapsule<
+        'static,
+        stm32wle5jc::rtc::Rtc<'static>,
+    >,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -121,6 +124,7 @@ impl SyscallDriverLookup for SeeedStudioLoraE5Mini {
             LORA_SPI_DRIVER_NUM => f(Some(self.lora_spi_controller)),
             LORA_GPIO_DRIVER_NUM => f(Some(self.lora_gpio)),
             capsules_core::i2c_master::DRIVER_NUM => f(Some(self.i2c_master)),
+            capsules_extra::date_time::DRIVER_NUM => f(Some(self.date_time)),
             _ => f(None),
         }
     }
@@ -180,6 +184,10 @@ unsafe fn setup_peripherals(tim2: &stm32wle5jc::tim2::Tim2, subghz_spi: &stm32wl
 
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::I2C2_EV).enable();
     cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::I2C2_ER).enable();
+
+    // RTC interrupts
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::RTC_WKUP).enable();
+    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::RTC_Alarm).enable();
 }
 
 /// Statically initialize the core peripherals for the chip.
@@ -207,9 +215,17 @@ unsafe fn create_peripherals() -> &'static mut Stm32wle5jcDefaultPeripherals<'st
         stm32wle5jc::exti::Exti::new(syscfg)
     );
 
+    let pwr = static_init!(stm32wle5jc::pwr::Pwr, stm32wle5jc::pwr::Pwr::new());
+
+    let rtc = static_init!(
+        stm32wle5jc::rtc::Rtc,
+        stm32wle5jc::rtc::Rtc::new(clocks, pwr)
+    );
+    rtc.register();
+
     let peripherals = static_init!(
         Stm32wle5jcDefaultPeripherals,
-        Stm32wle5jcDefaultPeripherals::new(clocks, exti, syscfg)
+        Stm32wle5jcDefaultPeripherals::new(clocks, exti, syscfg, pwr, rtc)
     );
 
     peripherals
@@ -335,7 +351,7 @@ pub unsafe fn main() {
             gpio_ports.get_pin(stm32wle5jc::gpio::PinId::PB08).unwrap(),
         );
 
-    base_peripherals.subghz_spi.set_nss(&base_peripherals.pwr);
+    base_peripherals.subghz_spi.set_nss(base_peripherals.pwr);
 
     let lora_spi_mux = components::spi::SpiMuxComponent::new(&base_peripherals.subghz_spi)
         .finalize(components::spi_mux_component_static!(
@@ -367,7 +383,7 @@ pub unsafe fn main() {
 
     let lora_busy_base = static_init!(
         stm32wle5jc::subghz_radio::SubGhzRadioBusy,
-        stm32wle5jc::subghz_radio::SubGhzRadioBusy::new(&base_peripherals.pwr)
+        stm32wle5jc::subghz_radio::SubGhzRadioBusy::new(base_peripherals.pwr)
     );
     let lora_busy_pin = static_init!(
         stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio,
@@ -428,60 +444,40 @@ pub unsafe fn main() {
     //--------------------------------------------------------------------
     // RTC
     //--------------------------------------------------------------------
-    debug!("=== RTC Test Starting ===");
-
-    let rtc = static_init!(
-        stm32wle5jc::rtc::Rtc,
-        stm32wle5jc::rtc::Rtc::new(base_peripherals.clocks)
-    );
-    rtc.register();
-
-    // Wire up RTC to peripherals for interrupt handling
-    peripherals.set_rtc(rtc);
-
-    // Enable RTC interrupts in NVIC
-    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::RTC_WKUP).enable();
-    cortexm4::nvic::Nvic::new(stm32wle5jc::nvic::RTC_Alarm).enable();
-
-    debug!("RTC: Initializing...");
-    match rtc.rtc_init() {
-        Ok(()) => debug!("RTC: Initialization successful"),
-        Err(e) => debug!("RTC: Initialization failed: {:?}", e),
+    if let Err(e) = base_peripherals.rtc.rtc_init() {
+        debug!("RTC init failed: {:?}", e);
     }
 
-    // Set up test client for basic datetime operations
-    let rtc_test_client = static_init!(
-        test::rtc_dummy::RtcTestClient<'static>,
-        test::rtc_dummy::RtcTestClient::new()
-    );
-    rtc_test_client.set_rtc(rtc);
-    rtc.set_client(rtc_test_client);
+    let rtc = base_peripherals.rtc;
 
-    // Set up extended test client for alarm and wakeup timer features
-    let rtc_ext_client = static_init!(
-        test::rtc_dummy::RtcExtendedTestClient<'static>,
-        test::rtc_dummy::RtcExtendedTestClient::new()
-    );
-    rtc_ext_client.set_rtc(rtc);
-    rtc_ext_client.set_test_client(rtc_test_client); // Link clients for state coordination
+    let date_time = components::date_time::DateTimeComponent::new(
+        board_kernel,
+        capsules_extra::date_time::DRIVER_NUM,
+        rtc,
+    )
+    .finalize(components::date_time_component_static!(
+        stm32wle5jc::rtc::Rtc<'static>
+    ));
 
-    // Link test client to extended client for triggering alarm test
-    rtc_test_client.set_ext_client(rtc_ext_client);
-
-    // Wire up all client callbacks
-    rtc.set_alarm_client(rtc_ext_client);
-    rtc.set_wakeup_client(rtc_ext_client);
-
-    // Run the complete RTC test sequence:
-    // 1. GET current time
-    // 2. SET new time (2025-01-15 10:00:00)
-    // 3. GET time again (verify change)
-    // 4. Alarm: fires at second 15 (triggered automatically after GET→SET→GET)
-    // 5. Wakeup timer: 5 times, every 2 seconds (triggered by alarm)
-    debug!("RTC: Starting comprehensive test sequence...");
-    test::rtc_dummy::run_complete_rtc_test(rtc, rtc_test_client, rtc_ext_client);
-
-    debug!("=== RTC Comprehensive Test Initiated ===");
+    // Uncomment to run RTC test sequence (GET→SET→GET, alarm, wakeup timer).
+    // Note: this replaces date_time as the RTC client — comment out the
+    // DateTimeComponent block above when testing.
+    // let rtc_test_client = static_init!(
+    //     test::rtc_dummy::RtcTestClient<'static>,
+    //     test::rtc_dummy::RtcTestClient::new()
+    // );
+    // rtc_test_client.set_rtc(rtc);
+    // rtc.set_client(rtc_test_client);
+    // let rtc_ext_client = static_init!(
+    //     test::rtc_dummy::RtcExtendedTestClient<'static>,
+    //     test::rtc_dummy::RtcExtendedTestClient::new()
+    // );
+    // rtc_ext_client.set_rtc(rtc);
+    // rtc_ext_client.set_test_client(rtc_test_client);
+    // rtc_test_client.set_ext_client(rtc_ext_client);
+    // rtc.set_alarm_client(rtc_ext_client);
+    // rtc.set_wakeup_client(rtc_ext_client);
+    // test::rtc_dummy::run_complete_rtc_test(rtc, rtc_test_client, rtc_ext_client);
 
     //--------------------------------------------------------------------
     // PROCESS CONSOLE
@@ -512,6 +508,7 @@ pub unsafe fn main() {
         lora_spi_controller,
         lora_gpio,
         i2c_master,
+        date_time,
     };
 
     assert!(base_peripherals.subghz_spi.is_enabled_clock());
