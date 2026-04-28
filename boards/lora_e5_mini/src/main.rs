@@ -71,6 +71,7 @@ struct LoraE5Mini {
     scheduler: &'static SchedulerInUse,
     systick: cortexm4::systick::SysTick,
     console: &'static capsules_core::console::Console<'static>,
+    ipc: kernel::ipc::IPC<{ NUM_PROCS as u8 }>,
     led: &'static capsules_core::led::LedDriver<
         'static,
         LedLow<'static, stm32wle5jc::gpio::Pin<'static>>,
@@ -110,6 +111,7 @@ impl SyscallDriverLookup for LoraE5Mini {
             LORA_SPI_DRIVER_NUM => f(Some(self.lora_spi_controller)),
             LORA_GPIO_DRIVER_NUM => f(Some(self.lora_gpio)),
             capsules_core::i2c_master::DRIVER_NUM => f(Some(self.i2c_master)),
+            kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             _ => f(None),
         }
     }
@@ -237,6 +239,7 @@ pub unsafe fn main() {
     // Create capabilities that the board needs to call certain protected kernel
     // functions.
     let main_loop_capability = create_capability!(capabilities::MainLoopCapability);
+    let memory_allocation_capability = create_capability!(capabilities::MemoryAllocationCapability);
     let process_management_capability =
         create_capability!(capabilities::ProcessManagementCapability);
 
@@ -434,6 +437,11 @@ pub unsafe fn main() {
             (MSI_FREQUENCY_MHZ * 1_000_000) as u32,
         ),
         console,
+        ipc: kernel::ipc::IPC::new(
+            board_kernel,
+            kernel::ipc::DRIVER_NUM,
+            &memory_allocation_capability,
+        ),
         led,
         alarm,
         lora_spi_controller,
@@ -482,7 +490,7 @@ pub unsafe fn main() {
     board_kernel.kernel_loop(
         &lora_e5_mini,
         chip,
-        None::<&kernel::ipc::IPC<2>>,
+        Some(&lora_e5_mini.ipc),
         &main_loop_capability,
     );
 }
