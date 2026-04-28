@@ -18,7 +18,6 @@ use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::debug::PanicResources;
-use kernel::deferred_call::DeferredCallClient;
 use kernel::hil::gpio::{Configure, Output};
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
@@ -217,15 +216,9 @@ unsafe fn create_peripherals() -> &'static mut Stm32wle5jcDefaultPeripherals<'st
 
     let pwr = static_init!(stm32wle5jc::pwr::Pwr, stm32wle5jc::pwr::Pwr::new());
 
-    let rtc = static_init!(
-        stm32wle5jc::rtc::Rtc,
-        stm32wle5jc::rtc::Rtc::new(clocks, pwr)
-    );
-    rtc.register();
-
     let peripherals = static_init!(
         Stm32wle5jcDefaultPeripherals,
-        Stm32wle5jcDefaultPeripherals::new(clocks, exti, syscfg, pwr, rtc)
+        Stm32wle5jcDefaultPeripherals::new(clocks, exti, syscfg, pwr)
     );
 
     peripherals
@@ -448,7 +441,7 @@ pub unsafe fn main() {
         panic!("RTC init failed: {:?}", e);
     }
 
-    let rtc = base_peripherals.rtc;
+    let rtc = &base_peripherals.rtc;
 
     let date_time = components::date_time::DateTimeComponent::new(
         board_kernel,

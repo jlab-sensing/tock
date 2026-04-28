@@ -32,7 +32,7 @@ pub struct Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
     pub subghz_radio_interrupt: crate::subghz_radio::SubGhzRadioInterrupt<'a>,
     pub pwr: &'a crate::pwr::Pwr,
     pub uid64: crate::device_signature::Uid64,
-    pub rtc: &'a crate::rtc::Rtc<'a>,
+    pub rtc: crate::rtc::Rtc<'a>,
 }
 
 impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
@@ -41,7 +41,6 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
         exti: &'a crate::exti::Exti<'a>,
         syscfg: &'a crate::syscfg::Syscfg,
         pwr: &'a crate::pwr::Pwr,
-        rtc: &'a crate::rtc::Rtc<'a>,
     ) -> Self {
         Self {
             clocks,
@@ -57,7 +56,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
             subghz_radio_interrupt: crate::subghz_radio::SubGhzRadioInterrupt::new(),
             pwr,
             uid64: crate::device_signature::Uid64::new(),
-            rtc,
+            rtc: crate::rtc::Rtc::new(clocks, pwr),
         }
     }
 
@@ -66,6 +65,8 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
         self.gpio_ports.setup_circular_deps();
         kernel::deferred_call::DeferredCallClient::register(&self.usart1);
         kernel::deferred_call::DeferredCallClient::register(&self.usart2);
+        kernel::deferred_call::DeferredCallClient::register(&self.rtc);
+        // kernel::deferred_call::DeferredCallClient::register(&self.i2c1);
     }
 }
 
