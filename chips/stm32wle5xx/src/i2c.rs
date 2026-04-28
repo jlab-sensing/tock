@@ -5,7 +5,7 @@
 use core::cell::Cell;
 
 use kernel::hil;
-use kernel::hil::i2c::{self, Error, I2CHwMasterClient};
+use kernel::hil::i2c::{self, Error, I2CHwMasterClient, I2CMaster};
 use kernel::platform::chip::ClockInterface;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -316,6 +316,8 @@ impl<'a> I2C<'a> {
     }
 
     pub fn set_speed(&self, speed: I2CSpeed) {
+        self.disable();
+
         let clk_speed = self.clock.0.get_frequency();
 
         if clk_speed != 4_000_000 {
@@ -330,6 +332,8 @@ impl<'a> I2C<'a> {
                 self.registers.timingr.set(0x0010061A);
             }
         }
+
+        self.enable();
     }
 
     pub fn is_enabled_clock(&self) -> bool {
@@ -347,12 +351,16 @@ impl<'a> I2C<'a> {
     pub fn handle_event(&self) {
         // handle no acknowledge
         if self.registers.isr.is_set(ISR::NACKF) {
+            self.registers.icr.write(ICR::NACKCF::SET);
+
+            self.stop();
             self.handle_error(Error::AddressNak);
             return;
         }
 
         // send next byte when TXIS is set
         if self.registers.isr.is_set(ISR::TXIS) {
+            // check data is available
             if self.buffer.is_some() && self.tx_position.get() < self.tx_len.get() {
                 // ready to send data
                 self.buffer.take().map(|buf| {
@@ -386,6 +394,7 @@ impl<'a> I2C<'a> {
         // From HAL drivers: apparently there's no need to check for TC since the STOP condition is
         // automatically generated.
         if self.registers.isr.is_set(ISR::STOPF) {
+            // clear stop flag
             self.registers.icr.write(ICR::STOPCF::SET);
 
             match self.status.get() {
@@ -424,6 +433,10 @@ impl<'a> I2C<'a> {
     }
 
     fn start_write(&self) {
+        if self.registers.isr.is_set(ISR::BUSY) {
+            self.handle_error(Error::Busy);
+        }
+
         if self.tx_len.get() <= 255 {
             self.tx_position.set(0);
             // set number of bytes to send
@@ -446,20 +459,28 @@ impl<'a> I2C<'a> {
     }
 
     fn stop(&self) {
-        // send stop
-        self.registers.cr2.modify(CR2::STOP::SET);
-
-        // NOTE maybe clear interrupt flags? It appears that this clears ISR flags as well
-        self.registers.cr1.modify(CR1::TXIE::CLEAR);
-        self.registers.cr1.modify(CR1::RXIE::CLEAR);
-        self.registers.cr1.modify(CR1::NACKIE::CLEAR);
-        self.registers.cr1.modify(CR1::STOPIE::CLEAR);
-        self.registers.cr1.modify(CR1::ERRIE::CLEAR);
+        // clear all interrupt registers
+        self.registers.icr.write(
+            ICR::ALERTCF::SET
+                + ICR::TIMEOUTCF::SET
+                + ICR::PECCF::SET
+                + ICR::OVRCF::SET
+                + ICR::ARLOCF::SET
+                + ICR::BERRCF::SET
+                + ICR::STOPCF::SET
+                + ICR::NACKCF::SET
+                + ICR::ADDRCF::SET,
+        );
 
         self.status.set(I2CStatus::Idle);
     }
 
     fn start_read(&self) {
+        // check interface is not busy? maybe just error out?
+        if self.registers.isr.is_set(ISR::BUSY) {
+            self.handle_error(Error::Busy);
+        }
+
         if self.rx_len.get() <= 255 {
             self.rx_position.set(0);
             // set number of bytes to send
@@ -479,6 +500,11 @@ impl<'a> I2C<'a> {
         } else {
             self.handle_error(Error::NotSupported);
         }
+    }
+
+    fn reset(&self) {
+        self.disable();
+        self.enable();
     }
 }
 
@@ -512,6 +538,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         read_len: usize,
     ) -> Result<(), (Error, &'static mut [u8])> {
         if self.status.get() == I2CStatus::Idle {
+            self.reset();
             self.status.set(I2CStatus::WritingReading);
             self.slave_address.set(addr);
             self.buffer.replace(data);
@@ -531,6 +558,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         len: usize,
     ) -> Result<(), (Error, &'static mut [u8])> {
         if self.status.get() == I2CStatus::Idle {
+            self.reset();
             self.status.set(I2CStatus::Writing);
             self.slave_address.set(addr);
             self.buffer.replace(data);
@@ -549,6 +577,7 @@ impl<'a> i2c::I2CMaster<'a> for I2C<'a> {
         len: usize,
     ) -> Result<(), (Error, &'static mut [u8])> {
         if self.status.get() == I2CStatus::Idle {
+            self.reset();
             self.status.set(I2CStatus::Reading);
             self.slave_address.set(addr);
             self.buffer.replace(buffer);

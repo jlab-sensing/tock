@@ -18,6 +18,7 @@ use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::debug::PanicResources;
+use kernel::hil::gpio::{Configure, Output};
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Counter;
 use kernel::platform::{KernelResources, SyscallDriverLookup};
@@ -374,13 +375,19 @@ pub unsafe fn main() {
     //--------------------------------------------------------------------
     // I2C2
     //--------------------------------------------------------------------
+
+    // SDA
     gpio_ports.get_pin(PinId::PA15).map(|pin| {
+        pin.set_mode_output_opendrain();
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
     });
 
+    // SCL
     gpio_ports.get_pin(PinId::PB15).map(|pin| {
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
     });
 
@@ -393,6 +400,12 @@ pub unsafe fn main() {
     .finalize(components::i2c_master_driver_component_static!(
         stm32wle5jc::i2c::I2C
     ));
+
+    // temporary code for setting GPIO powerdown pin for board peripherals
+    gpio_ports.get_pin(PinId::PA09).map(|pin| {
+        pin.set_mode(stm32wle5jc::gpio::Mode::GeneralPurposeOutputMode);
+        pin.set();
+    });
 
     // Uncomment to run I2C scan test
     // test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
