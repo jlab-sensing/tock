@@ -24,7 +24,8 @@ use kernel::hil::led::LedLow;
 use kernel::hil::sdi12::{Receive as Sdi12Receive, Transmit as Sdi12Transmit};
 use kernel::hil::time::Alarm;
 use kernel::hil::time::Counter;
-use kernel::hil::uart::{Receive, Transmit};
+use kernel::hil::uart;
+use kernel::hil::uart::{Configure, Receive, Transmit};
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
@@ -278,6 +279,13 @@ pub unsafe fn main() {
     //--------------------------------------------------------------------
     base_peripherals.usart1.enable_clock();
     base_peripherals.usart2.enable_clock();
+    let _ = base_peripherals.usart2.configure(uart::Parameters {
+        baud_rate: 1200,
+        width: uart::Width::Eight,
+        stop_bits: uart::StopBits::One,
+        parity: uart::Parity::None,
+        hw_flow_control: false,
+    });
 
     // USART1: PB6=TX , PB7=RX
     gpio_ports.get_pin(PinId::PB06).map(|pin| {
@@ -303,9 +311,6 @@ pub unsafe fn main() {
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
     });
-
-    let uart_mux_2 = components::console::UartMuxComponent::new(&base_peripherals.usart2, 1200)
-        .finalize(components::uart_mux_component_static!());
 
     (*addr_of_mut!(io::WRITER)).set_initialized();
 
@@ -333,12 +338,6 @@ pub unsafe fn main() {
         uart_mux_1,
     )
     .finalize(components::console_component_static!());
-
-    let uart_device = static_init!(
-        capsules_core::virtualizers::virtual_uart::UartDevice<'static>,
-        capsules_core::virtualizers::virtual_uart::UartDevice::new(uart_mux_2, true)
-    );
-    uart_device.setup();
 
     // Create the debugger object that handles calls to `debug!()`.
     components::debug_writer::DebugWriterComponent::new::<
@@ -493,8 +492,7 @@ pub unsafe fn main() {
             virtual_alarm,
         )
     );
-    //TODO: figure out why there needs to be a uart_device for the uart to transmit
-    // but the peripheral needs to be set to the transmit client for that to work
+
     virtual_alarm.set_alarm_client(sdi12_driver);
     base_peripherals.usart2.set_transmit_client(sdi12_driver);
     base_peripherals.usart2.set_receive_client(sdi12_driver);
