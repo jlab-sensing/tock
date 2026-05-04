@@ -496,7 +496,6 @@ pub unsafe fn main() {
     //TODO: figure out why there needs to be a uart_device for the uart to transmit
     // but the peripheral needs to be set to the transmit client for that to work
     virtual_alarm.set_alarm_client(sdi12_driver);
-    //uart_device.set_transmit_client(sdi12_driver);
     base_peripherals.usart2.set_transmit_client(sdi12_driver);
     base_peripherals.usart2.set_receive_client(sdi12_driver);
 
