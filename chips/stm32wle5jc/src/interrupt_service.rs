@@ -14,9 +14,10 @@ impl<'a> Stm32wle5jcDefaultPeripherals<'a> {
         clocks: &'a crate::clocks::Clocks<'a, Stm32wle5jcSpecs>,
         exti: &'a crate::exti::Exti<'a>,
         syscfg: &'a crate::syscfg::Syscfg,
+        pwr: &'a crate::pwr::Pwr,
     ) -> Self {
         Self {
-            stm32wle: Stm32wle5xxDefaultPeripherals::new(clocks, exti, syscfg),
+            stm32wle: Stm32wle5xxDefaultPeripherals::new(clocks, exti, syscfg, pwr),
         }
     }
     // Necessary for setting up circular dependencies & registering deferred

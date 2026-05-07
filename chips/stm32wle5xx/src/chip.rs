@@ -30,8 +30,9 @@ pub struct Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
     pub i2c2: crate::i2c::I2C<'a>,
     pub subghz_spi: crate::spi::Spi<'a>,
     pub subghz_radio_interrupt: crate::subghz_radio::SubGhzRadioInterrupt<'a>,
-    pub pwr: crate::pwr::Pwr,
+    pub pwr: &'a crate::pwr::Pwr,
     pub uid64: crate::device_signature::Uid64,
+    pub rtc: crate::rtc::Rtc<'a>,
 }
 
 impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs> {
@@ -39,6 +40,7 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
         clocks: &'a crate::clocks::Clocks<'a, ChipSpecs>,
         exti: &'a crate::exti::Exti<'a>,
         syscfg: &'a crate::syscfg::Syscfg,
+        pwr: &'a crate::pwr::Pwr,
     ) -> Self {
         Self {
             clocks,
@@ -52,8 +54,9 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
             i2c2: crate::i2c::I2C::new(clocks),
             subghz_spi: crate::spi::Spi::new_subghzspi(clocks),
             subghz_radio_interrupt: crate::subghz_radio::SubGhzRadioInterrupt::new(),
-            pwr: crate::pwr::Pwr::new(),
+            pwr,
             uid64: crate::device_signature::Uid64::new(),
+            rtc: crate::rtc::Rtc::new(clocks, pwr),
         }
     }
 
@@ -62,6 +65,8 @@ impl<'a, ChipSpecs: ChipSpecsTrait> Stm32wle5xxDefaultPeripherals<'a, ChipSpecs>
         self.gpio_ports.setup_circular_deps();
         kernel::deferred_call::DeferredCallClient::register(&self.usart1);
         kernel::deferred_call::DeferredCallClient::register(&self.usart2);
+        kernel::deferred_call::DeferredCallClient::register(&self.rtc);
+        // kernel::deferred_call::DeferredCallClient::register(&self.i2c1);
     }
 }
 
@@ -91,6 +96,10 @@ impl<ChipSpecs: ChipSpecsTrait> InterruptService for Stm32wle5xxDefaultPeriphera
             | nvic::EXTI9_5
             | nvic::EXTI15_10 => {
                 self.exti.handle_interrupt();
+            }
+            // RTC interrupts: wakeup timer, alarm, and timestamp
+            nvic::TAMP_STAMP | nvic::RTC_WKUP | nvic::RTC_Alarm => {
+                self.rtc.handle_interrupt();
             }
             _ => return false,
         }
