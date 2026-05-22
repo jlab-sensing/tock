@@ -421,6 +421,7 @@ pub unsafe fn main() {
     });
 
     base_peripherals.i2c2.enable_clock();
+    base_peripherals.i2c2.set_speed(stm32wle5jc::i2c::I2CSpeed::Speed100k);
     let i2c_master = components::i2c::I2CMasterDriverComponent::new(
         board_kernel,
         capsules_core::i2c_master::DRIVER_NUM,
