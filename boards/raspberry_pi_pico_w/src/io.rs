@@ -6,10 +6,12 @@
 use core::fmt::Write;
 use core::panic::PanicInfo;
 
-use kernel::debug::{self, IoWrite};
+use kernel::debug;
 use kernel::hil::uart::{Configure, Parameters, Parity, StopBits, Width};
 use kernel::utilities::cells::OptionalCell;
+use kernel::utilities::io_write::IoWrite;
 
+use rp2040::clocks::Clocks;
 use rp2040::gpio::{GpioFunction, RPGpio, RPGpioPin};
 use rp2040::uart::Uart;
 
@@ -65,7 +67,8 @@ impl IoWrite for Writer {
     fn write(&mut self, buf: &[u8]) -> usize {
         self.uart.map_or_else(
             || {
-                let uart = Uart::new_uart0();
+                let clocks = Clocks::new();
+                let uart = Uart::new_uart0(&clocks);
                 self.configure_uart(&uart);
                 self.write_to_uart(&uart, buf);
             },
@@ -87,7 +90,7 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     use core::ptr::addr_of_mut;
     let writer = &mut *addr_of_mut!(WRITER);
 
-    debug::panic_print(
+    debug::panic_print_old(
         writer,
         pi,
         &cortexm0p::support::nop,

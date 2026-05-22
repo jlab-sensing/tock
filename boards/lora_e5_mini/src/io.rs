@@ -6,8 +6,8 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::ptr::addr_of_mut;
 
-use kernel::debug::IoWrite;
 use kernel::hil::led;
+use kernel::utilities::io_write::IoWrite;
 
 use kernel::hil::led::Led;
 use kernel::hil::uart;
@@ -111,7 +111,7 @@ pub unsafe fn panic_fmt(info: &PanicInfo) -> ! {
         width: uart::Width::Eight,
     });
 
-    kernel::debug::panic_print(
+    kernel::debug::panic_print_old(
         &mut *addr_of_mut!(WRITER),
         info,
         &cortexm4::support::nop,
