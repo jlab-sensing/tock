@@ -7,8 +7,11 @@
 pub mod arch_helpers;
 pub mod binary_write;
 pub mod capability_ptr;
+pub mod copy_range;
 pub mod copy_slice;
+pub mod dma_slice;
 pub mod helpers;
+pub mod io_write;
 pub mod leasable_buffer;
 pub mod machine_register;
 pub mod math;
@@ -35,8 +38,8 @@ pub mod registers {
     pub use tock_registers::interfaces;
     pub use tock_registers::registers::InMemoryRegister;
     pub use tock_registers::registers::{Aliased, ReadOnly, ReadWrite, WriteOnly};
-    pub use tock_registers::{register_bitfields, register_structs};
     pub use tock_registers::{LocalRegisterCopy, RegisterLongName};
+    pub use tock_registers::{register_bitfields, register_structs};
 }
 
 /// The Tock `Cell` types.
