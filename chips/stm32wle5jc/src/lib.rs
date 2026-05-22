@@ -5,7 +5,8 @@
 #![no_std]
 
 pub use stm32wle5xx::{
-    chip, clocks, exti, gpio, i2c, nvic, pwr, rcc, rtc, spi, subghz_radio, syscfg, tim2, usart,
+    chip, clocks, device_signature, exti, gpio, i2c, nvic, pwr, rcc, rtc, spi, subghz_radio,
+    syscfg, tim2, usart,
 };
 
 pub mod chip_specs;

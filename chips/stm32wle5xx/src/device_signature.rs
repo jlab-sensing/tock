@@ -3,25 +3,28 @@
 // Copyright Tock Contributors 2025.
 
 use kernel::utilities::registers::interfaces::Readable;
-use kernel::utilities::registers::{register_bitfields, ReadOnly};
+use kernel::utilities::registers::{register_bitfields, register_structs, ReadOnly};
 use kernel::utilities::StaticRef;
 
-struct Uid64Registers {
-    uid_high: ReadOnly<u32, UIDHIGH::Register>,
-    uid_low: ReadOnly<u32, UIDLOW::Register>,
+register_structs! {
+    Uid64Registers {
+        (0x0 => uid64_low: ReadOnly<u32, UID64LOW::Register>),
+        (0x4 => uid64_high: ReadOnly<u32, UID64HIGH::Register>),
+        (0x8 => @END),
+    }
 }
 
 register_bitfields![u32,
-    UIDHIGH [
+    UID64LOW [
         /// Device number.
-        UID OFFSET(0) NUMBITS(32) []
+        UID OFFSET(0) NUMBITS(32) [],
     ],
-    UIDLOW [
+    UID64HIGH [
         /// Company ID - 0x0080E1 for STMicroelectronics.
         STID OFFSET(8) NUMBITS(24) [],
         /// Device ID.
         DEVID OFFSET(0) NUMBITS(8) []
-    ]
+    ],
 ];
 
 const UID64_BASE: StaticRef<Uid64Registers> =
@@ -39,8 +42,13 @@ impl Uid64 {
     }
 
     pub fn get_device_uid64(&self) -> u64 {
-        let uid_high = self.registers.uid_high.get();
-        let uid_low = self.registers.uid_low.get();
-        ((uid_high as u64) << 32) | (uid_low as u64)
+        let uid_high = self.registers.uid64_high.get();
+        let uid_low = self.registers.uid64_low.get();
+
+        // expected output: 2e8d470515e18000
+        let uid = ((uid_high as u64) << 32) | (uid_low as u64);
+
+        // need to swap byte order: 0080e11505478d2e
+        uid.swap_bytes()
     }
 }
