@@ -415,6 +415,7 @@ pub unsafe fn main() {
 
     // SCL
     gpio_ports.get_pin(PinId::PB15).map(|pin| {
+        pin.set_mode_output_opendrain();
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
         pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
