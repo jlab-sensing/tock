@@ -415,12 +415,16 @@ pub unsafe fn main() {
 
     // SCL
     gpio_ports.get_pin(PinId::PB15).map(|pin| {
+        pin.set_mode_output_opendrain();
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
         pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF4);
     });
 
     base_peripherals.i2c2.enable_clock();
+    base_peripherals
+        .i2c2
+        .set_speed(stm32wle5jc::i2c::I2CSpeed::Speed400k);
     let i2c_master = components::i2c::I2CMasterDriverComponent::new(
         board_kernel,
         capsules_core::i2c_master::DRIVER_NUM,

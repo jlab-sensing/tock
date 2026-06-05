@@ -326,10 +326,13 @@ impl<'a> I2C<'a> {
 
         match speed {
             I2CSpeed::Speed100k => {
-                self.registers.timingr.set(0x00303D5B);
+                self.registers.timingr.set(0xE14);
+
+                //self.registers.timingr.set(0x00303D5B);
             }
             I2CSpeed::Speed400k => {
-                self.registers.timingr.set(0x0010061A);
+                self.registers.timingr.set(0x4);
+                //self.registers.timingr.set(0x0010061A);
             }
         }
 
