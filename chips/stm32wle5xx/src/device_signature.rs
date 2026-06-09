@@ -45,10 +45,8 @@ impl Uid64 {
         let uid_high = self.registers.uid64_high.get();
         let uid_low = self.registers.uid64_low.get();
 
-        // expected output: 2e8d470515e18000
         let uid = ((uid_high as u64) << 32) | (uid_low as u64);
 
-        // need to swap byte order: 0080e11505478d2e
         uid.swap_bytes()
     }
 }
