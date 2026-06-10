@@ -26,6 +26,7 @@ use kernel::utilities::single_thread_value::SingleThreadValue;
 use kernel::{create_capability, debug, static_init};
 use stm32wle5jc::chip_specs::Stm32wle5jcSpecs;
 use stm32wle5jc::clocks::msi::MSI_FREQUENCY_MHZ;
+use stm32wle5jc::device_signature::Uid64;
 use stm32wle5jc::gpio::{PinId, PortId};
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
@@ -100,6 +101,7 @@ struct LoraE5Mini {
         'static,
         stm32wle5jc::rtc::Rtc<'static>,
     >,
+    eui64: &'static capsules_extra::eui64::Eui64,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -117,6 +119,7 @@ impl SyscallDriverLookup for LoraE5Mini {
             capsules_core::i2c_master::DRIVER_NUM => f(Some(self.i2c_master)),
             kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             capsules_extra::date_time::DRIVER_NUM => f(Some(self.date_time)),
+            capsules_extra::eui64::DRIVER_NUM => f(Some(self.eui64)),
             _ => f(None),
         }
     }
@@ -466,6 +469,15 @@ pub unsafe fn main() {
     // test::rtc_dummy::run_complete_rtc_test(rtc);
 
     //--------------------------------------------------------------------
+    // EUI64 (MAC Address for LoRaWAN)
+    //--------------------------------------------------------------------
+    let uid64 = Uid64::new();
+    let device_eui64 = uid64.get_device_uid64();
+
+    let eui64 = components::eui64::Eui64Component::new(device_eui64)
+        .finalize(components::eui64_component_static!());
+
+    //--------------------------------------------------------------------
     // PROCESS CONSOLE
     //--------------------------------------------------------------------
     let process_console = components::process_console::ProcessConsoleComponent::new(
@@ -500,6 +512,7 @@ pub unsafe fn main() {
         lora_gpio,
         i2c_master,
         date_time,
+        eui64,
     };
 
     assert!(base_peripherals.subghz_spi.is_enabled_clock());
