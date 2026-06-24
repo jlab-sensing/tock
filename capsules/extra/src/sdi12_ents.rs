@@ -195,8 +195,8 @@ where
         processid: ProcessId,
     ) -> CommandReturn {
         // debug!("command syscall executing");
-        kernel::debug!("SDI12 capsule command syscall {}", _command_num);
-        kernel::debug!("data1: {}, data2: {}", data1, data2);
+        kernel::debug!("[k] SDI12 capsule command syscall {}", _command_num);
+        kernel::debug!("[k] data1: {}, data2: {}", data1, data2);
         match _command_num {
             // Driver existence check
             0 => CommandReturn::success(),
@@ -253,7 +253,7 @@ where
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
         // Allocation is performed implicitly when the grant region is entered.
-        kernel::debug!("Allocating SDI12 capsule grant for process {:?}", processid);
+        kernel::debug!("[k] Allocating SDI12 capsule grant for process {:?}", processid);
         self.grant.enter(processid, |_, _| {})
     }
 }
@@ -265,7 +265,7 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> TransmitClient for Sdi12En
         length: usize,
         status: Result<(), ErrorCode>,
     ) {
-        debug!("SDI12 capsule Transmit complete, buffer returned");
+        debug!("[k] SDI12 capsule Transmit complete, buffer returned");
         // Put the buffer back into the TakeCell for reuse
         self.tx_buffer.replace(buffer);
         self.state.set(State::Idle);
@@ -291,9 +291,9 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> sdi12::ReceiveClient for S
         status: Result<(), ErrorCode>,
         _error: kernel::hil::uart::Error,
     ) {
-        debug!("SDI12 capsule Receive complete, {} bytes received", length);
+        debug!("[k] SDI12 capsule Receive complete, {} bytes received", length);
 
-        debug!("SDI12 RAW buffer: {:?}", &buffer[..length]);
+        debug!("[k] SDI12 RAW buffer: {:?}", &buffer[..length]);
 
         // Copy received data to userspace buffer
         self.rx_in_progress.map(|processid| {
@@ -304,7 +304,7 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> sdi12::ReceiveClient for S
                         for i in 0..copy_len {
                             dest[i].set(buffer[i] & 0x7F); // Mask off bit 7
                         }
-                        debug!("Copied {} bytes to userspace (bit 7 masked)", copy_len);
+                        debug!("[k] Copied {} bytes to userspace (bit 7 masked)", copy_len);
                     });
                 }
             });

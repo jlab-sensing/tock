@@ -19,7 +19,7 @@ use capsules_extra::sdi12_ents::Sdi12Ents;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::debug::PanicResources;
-use kernel::hil::gpio::Output;
+use kernel::hil::gpio::{Configure as GpioConfigure, Output};
 use kernel::hil::led::LedLow;
 use kernel::hil::sdi12::{Receive as Sdi12Receive, Transmit as Sdi12Transmit};
 use kernel::hil::time::Alarm;
@@ -36,6 +36,7 @@ use stm32wle5jc::clocks::msi::MSI_FREQUENCY_MHZ;
 use stm32wle5jc::gpio::{PinId, PortId};
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
+
 
 /// Support routines for debugging I/O.
 pub mod io;
@@ -273,19 +274,13 @@ pub unsafe fn main() {
     gpio_ports.get_port_from_port_id(PortId::B).enable_clock();
     gpio_ports.get_port_from_port_id(PortId::A).enable_clock();
     gpio_ports.get_port_from_port_id(PortId::C).enable_clock();
+   
+
 
     //--------------------------------------------------------------------
     // Usart
     //--------------------------------------------------------------------
     base_peripherals.usart1.enable_clock();
-    base_peripherals.usart2.enable_clock();
-    let _ = base_peripherals.usart2.configure(uart::Parameters {
-        baud_rate: 1200,
-        width: uart::Width::Eight,
-        stop_bits: uart::StopBits::One,
-        parity: uart::Parity::None,
-        hw_flow_control: false,
-    });
 
     // USART1: PB6=TX , PB7=RX
     gpio_ports.get_pin(PinId::PB06).map(|pin| {
@@ -301,16 +296,6 @@ pub unsafe fn main() {
     let uart_mux_1 = components::console::UartMuxComponent::new(&base_peripherals.usart1, 115200)
         .finalize(components::uart_mux_component_static!());
 
-    // USART2: PA2=TX , PA3=RX
-    gpio_ports.get_pin(PinId::PA02).map(|pin| {
-        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
-        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
-    });
-
-    gpio_ports.get_pin(PinId::PA03).map(|pin| {
-        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
-        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
-    });
 
     (*addr_of_mut!(io::WRITER)).set_initialized();
 
@@ -452,32 +437,80 @@ pub unsafe fn main() {
     // Uncomment to run I2C scan test
     // test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
 
-    //--------------------------------------------------------------------
-    // PROCESS CONSOLE
-    //--------------------------------------------------------------------
-    let process_console = components::process_console::ProcessConsoleComponent::new(
-        board_kernel,
-        uart_mux_1,
-        mux_alarm,
-        process_printer,
-        Some(cortexm4::support::reset),
-    )
-    .finalize(components::process_console_component_static!(
-        stm32wle5jc::tim2::Tim2
-    ));
-    let _ = process_console.start();
 
-    let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
-        .finalize(components::round_robin_component_static!(NUM_PROCS));
 
+    //--------------------------------------------------------------------
+    // SDI12
+    //--------------------------------------------------------------------
+
+
+    debug!("\n\n\n");
+    debug!("[k] A clock enabled: {}", gpio_ports.get_port_from_port_id(PortId::A).is_enabled_clock());
+    debug!("[k] B clock enabled: {}", gpio_ports.get_port_from_port_id(PortId::B).is_enabled_clock());
+    debug!("[k] C clock enabled: {}", gpio_ports.get_port_from_port_id(PortId::C).is_enabled_clock());
+    debug!("\n\n\n");
+
+
+    // setup usart2 peripherial
+    base_peripherals.usart2.enable_clock();
+    let _ = base_peripherals.usart2.configure(uart::Parameters {
+        baud_rate: 1200,
+        width: uart::Width::Eight,
+        stop_bits: uart::StopBits::One,
+        parity: uart::Parity::None,
+        hw_flow_control: false,
+    });
+
+
+    // USART2: PA2=TX , PA3=RX
+    gpio_ports.get_pin(PinId::PA02).map(|pin| {
+        pin.make_output();
+        pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
+
+    });
+
+    gpio_ports.get_pin(PinId::PA03).map(|pin| {
+        pin.make_input();
+        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
+        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
+    });
+
+
+    // Test output of GPIO
+    //gpio_ports.get_pin(PinId::PC00).map(|pin| {
+    //    pin.make_output();
+    //    pin.set_floating_state(kernel::hil::gpio::FloatingState::PullUp);
+    //    pin.set();
+    //});
+
+
+    debug!("[k] Port B");
+    gpio_ports.get_port_from_port_id(PortId::B).dump();
+    debug!("[k] Port C");
+    gpio_ports.get_port_from_port_id(PortId::C).dump();
+
+
+    // Pin to control direction (default high)
     let sdi12_command_pin = gpio_ports.get_pin(PinId::PC01).unwrap();
+    sdi12_command_pin.make_output();
+    sdi12_command_pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
+    sdi12_command_pin.clear();
+    
+
+    // Alarm for sdi12 timing
     let virtual_alarm = static_init!(
         VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
         VirtualMuxAlarm::new(mux_alarm)
     );
     virtual_alarm.setup();
 
+    // Need to pass pin directly so that it can break signals
+    // TODO: I think this can be removed if we send all 1s in UART message. We know the baud so we
+    // can calculate how many bits to send
     let sdi12_usart_pin = gpio_ports.get_pin(PinId::PA02).unwrap();
+
 
     let sdi12_driver = static_init!(
         stm32wle5jc::sdi12::Sdi12<
@@ -497,6 +530,7 @@ pub unsafe fn main() {
     base_peripherals.usart2.set_transmit_client(sdi12_driver);
     base_peripherals.usart2.set_receive_client(sdi12_driver);
 
+    // NOTE (jtmadden): Don't understand why memory needs to be allocated here
     let sdi12_grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
     let sdi12_driver_process_grant =
         board_kernel.create_grant(capsules_extra::sdi12_ents::DRIVER_NUM, &sdi12_grant_cap);
@@ -519,6 +553,29 @@ pub unsafe fn main() {
     );
     sdi12_driver.set_transmit_client(sdi12_ents);
     sdi12_driver.set_receive_client(sdi12_ents);
+
+
+
+    //--------------------------------------------------------------------
+    // PROCESS CONSOLE
+    //--------------------------------------------------------------------
+    let process_console = components::process_console::ProcessConsoleComponent::new(
+        board_kernel,
+        uart_mux_1,
+        mux_alarm,
+        process_printer,
+        Some(cortexm4::support::reset),
+    )
+    .finalize(components::process_console_component_static!(
+        stm32wle5jc::tim2::Tim2
+    ));
+    let _ = process_console.start();
+
+    let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
+        .finalize(components::round_robin_component_static!(NUM_PROCS));
+
+
+
 
     let seeed_studio_lora_e5_mini = SeeedStudioLoraE5Mini {
         scheduler,
