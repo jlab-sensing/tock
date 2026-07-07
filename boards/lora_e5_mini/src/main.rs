@@ -15,6 +15,7 @@
 use core::ptr::addr_of_mut;
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
+use components::gpio::GpioComponent;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::debug::PanicResources;
@@ -102,6 +103,7 @@ struct LoraE5Mini {
         stm32wle5jc::rtc::Rtc<'static>,
     >,
     eui64: &'static capsules_extra::eui64::Eui64,
+    gpio: &'static capsules_core::gpio::GPIO<'static, stm32wle5jc::gpio::Pin<'static>>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -120,6 +122,7 @@ impl SyscallDriverLookup for LoraE5Mini {
             kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             capsules_extra::date_time::DRIVER_NUM => f(Some(self.date_time)),
             capsules_extra::eui64::DRIVER_NUM => f(Some(self.eui64)),
+            capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
             _ => f(None),
         }
     }
@@ -478,6 +481,37 @@ pub unsafe fn main() {
         .finalize(components::eui64_component_static!());
 
     //--------------------------------------------------------------------
+    // GPIO
+    //--------------------------------------------------------------------
+
+    // ordering was done by going counterclockwise around available pins on the Wio-E5 from
+    // KiCAD
+
+    let gpio = GpioComponent::new(
+        board_kernel,
+        capsules_core::gpio::DRIVER_NUM,
+        components::gpio_component_helper!(
+            stm32wle5jc::gpio::Pin,
+            // wakeup pin
+            1 => gpio_ports.get_pin(PinId::PA00).unwrap(),
+            // ADC_DRDY
+            2 => gpio_ports.get_pin(PinId::PC00).unwrap(),
+            // PG
+            3 => gpio_ports.get_pin(PinId::PA10).unwrap(),
+            // CHG
+            4 => gpio_ports.get_pin(PinId::PB14).unwrap(),
+            // VBAT/2
+            5 => gpio_ports.get_pin(PinId::PB13).unwrap(),
+            // ESP32_EN
+            6 => gpio_ports.get_pin(PinId::PB10).unwrap(),
+            // POWERDOWN
+            7 => gpio_ports.get_pin(PinId::PA09).unwrap()
+
+        ),
+    )
+    .finalize(components::gpio_component_static!(stm32wle5jc::gpio::Pin));
+
+    //--------------------------------------------------------------------
     // PROCESS CONSOLE
     //--------------------------------------------------------------------
     let process_console = components::process_console::ProcessConsoleComponent::new(
@@ -513,6 +547,7 @@ pub unsafe fn main() {
         i2c_master,
         date_time,
         eui64,
+        gpio,
     };
 
     assert!(base_peripherals.subghz_spi.is_enabled_clock());
