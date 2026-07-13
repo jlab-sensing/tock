@@ -514,17 +514,18 @@ pub unsafe fn main() {
     //--------------------------------------------------------------------
     // PROCESS CONSOLE
     //--------------------------------------------------------------------
-    let process_console = components::process_console::ProcessConsoleComponent::new(
-        board_kernel,
-        uart_mux,
-        mux_alarm,
-        process_printer,
-        Some(cortexm4::support::reset),
-    )
-    .finalize(components::process_console_component_static!(
-        stm32wle5jc::tim2::Tim2
-    ));
-    let _ = process_console.start();
+
+    //let process_console = components::process_console::ProcessConsoleComponent::new(
+    //    board_kernel,
+    //    uart_mux,
+    //    mux_alarm,
+    //    process_printer,
+    //    Some(cortexm4::support::reset),
+    //)
+    //.finalize(components::process_console_component_static!(
+    //    stm32wle5jc::tim2::Tim2
+    //));
+    //let _ = process_console.start();
 
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
@@ -551,7 +552,8 @@ pub unsafe fn main() {
     };
 
     assert!(base_peripherals.subghz_spi.is_enabled_clock());
-    debug!("Initialization complete. Entering main loop...");
+    //debug!("Initialization complete. Entering main loop...");
+
     // These symbols are defined in the linker script.
     extern "C" {
         /// Beginning of the ROM region containing app images.
