@@ -1,22 +1,22 @@
 // Licensed under the Apache License, Version 2.0 or the MIT License.
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright Tock Contributors 2022.
+// Copyright Tock Contributors 2025.
 
 // Written by Stephen Taylor, UCSD, 2025
 
-//! Provides userspace with access to sdi12 enviormental sensors. Uses a command pin specific to ENTS hardware
+//! Provides userspace with access to sdi12 environmental sensors. sdi12 uses UART as a bus protocol in conjunction with a command pin gpio.
 //!
 //! Userspace Interface
 //! -------------------
 //!
 //! ### `command` System Call
 //!
-//! The `command` system call support one argument `cmd` which is used to specify the specific
+//! The `command` system call support one argument `cmd` which is used to specify the
 //! operation, currently the following cmd's are supported:
 //!
 //! * `0`: check whether the driver exists
-//! * `1`: query the address of connected SDI12 sensor, note this requires the command pin to be connected
-//! and that if multiple sensors are connected they will all respond to this command. Potentially resulting in bus contention
+//! * `1`: query the address of connected SDI12 sensor. Note this requires the command pin to be connected.
+//! If multiple sensors are connected, they will all respond to this command and may result in bus contention.
 //!
 //!
 
