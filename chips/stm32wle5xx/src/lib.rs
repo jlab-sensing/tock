@@ -9,7 +9,6 @@
 #![crate_name = "stm32wle5xx"]
 #![crate_type = "rlib"]
 #![no_std]
-#![allow(clippy::doc_suspicious_footnotes)]
 
 pub mod chip;
 pub mod chip_specific;

@@ -189,15 +189,15 @@ where
 {
     fn command(
         &self,
-        _command_num: usize,
+        command_num: usize,
         data1: usize,
         data2: usize,
         processid: ProcessId,
     ) -> CommandReturn {
         // debug!("command syscall executing");
-        kernel::debug!("[k] SDI12 capsule command syscall {}", _command_num);
+        kernel::debug!("[k] SDI12 capsule command syscall {}", command_num);
         kernel::debug!("[k] data1: {}, data2: {}", data1, data2);
-        match _command_num {
+        match command_num {
             // Driver existence check
             0 => CommandReturn::success(),
             // test send data command
