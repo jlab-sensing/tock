@@ -85,6 +85,7 @@ pub mod screen;
 pub mod screen_adapters;
 pub mod screen_on;
 pub mod segger_rtt;
+pub mod sdi12;
 pub mod servo;
 pub mod sh1106;
 pub mod sha;
