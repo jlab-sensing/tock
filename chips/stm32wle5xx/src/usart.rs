@@ -462,6 +462,8 @@ impl<'a> Usart<'a> {
 
             // ignore IRQ if not receiving
             if self.rx_status.get() == USARTStateRX::Receiving {
+                
+                // Get next byte
                 if self.rx_position.get() < self.rx_len.get() {
                     self.rx_buffer.map(|buf| {
                         buf[self.rx_position.get()] = byte;
@@ -469,12 +471,8 @@ impl<'a> Usart<'a> {
                     self.rx_position.set(self.rx_position.get() + 1);
                 }
 
-                // Completion conditions:
-                // 1) buffer full, OR
-                // 2) SDI-12 line complete on '\n'
-                let done = self.rx_position.get() == self.rx_len.get() || byte == b'\n';
-
-                if done {
+                // Check if we have received all the bytes
+                if self.rx_position.get() == self.rx_len.get() {
                     self.rx_status.set(USARTStateRX::Idle);
                     self.disable_receive_interrupt();
 
@@ -588,17 +586,23 @@ impl<'a> hil::uart::Transmit<'a> for Usart<'a> {
 
 impl hil::uart::Configure for Usart<'_> {
     fn configure(&self, params: hil::uart::Parameters) -> Result<(), ErrorCode> {
-        // Allowed sets
-        let ok_baud = params.baud_rate == 115200 || params.baud_rate == 1200;
-        let ok_stop = params.stop_bits == hil::uart::StopBits::One;
-        let ok_parity =
-            params.parity == hil::uart::Parity::None || params.parity == hil::uart::Parity::Even;
-        let ok_width =
-            params.width == hil::uart::Width::Eight || params.width == hil::uart::Width::Seven;
-        let ok_hw_flow = !params.hw_flow_control;
 
-        if !(ok_baud && ok_stop && ok_parity && ok_width && ok_hw_flow) {
-            panic!("Only supports for Console and SDI12");
+        let console_mode = 
+            params.baud_rate == 115200
+            && params.stop_bits == hil::uart::StopBits::One
+            && params.parity == hil::uart::Parity::None
+            && !params.hw_flow_control
+            && params.width == hil::uart::Width::Eight;
+
+        let sdi12_mode = 
+            params.baud_rate == 1200
+            && params.stop_bits == hil::uart::StopBits::One
+            && params.parity == hil::uart::Parity::Even
+            && !params.hw_flow_control
+            && params.width == hil::uart::Width::Seven;
+        
+        if !(console_mode || sdi12_mode) {
+            panic!("USART only supports console and sdi12 mode.");
         }
 
         // Word length: handle 7 vs 8 later as needed
@@ -626,7 +630,8 @@ impl hil::uart::Configure for Usart<'_> {
             }
             hil::uart::Parity::Even => {
                 self.registers.cr1.modify(CR1::PCE::SET);
-                self.registers.cr1.modify(CR1::PS::CLEAR); // PS = 0 => Even
+                // PS = 0 => Even
+                self.registers.cr1.modify(CR1::PS::CLEAR); 
             }
             _ => {}
         }
