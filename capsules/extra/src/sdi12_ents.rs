@@ -20,6 +20,8 @@
 //!
 //!
 
+use enum_primitive::enum_from_primitive;
+
 use capsules_core::driver;
 use core::cell::Cell;
 use kernel::debug;
@@ -183,6 +185,20 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> Sdi12Ents<'a, S> {
     }
 }
 
+use enum_primitive::cast::FromPrimitive;
+
+enum_from_primitive! {
+    #[derive(Debug, PartialEq, Clone, Copy)]
+    pub enum Cmd {
+        Ping = 0,
+        Write = 1,
+        Read = 2,
+        WhoKnows = 3,
+    }
+}
+        
+
+
 impl<'a, S> SyscallDriver for Sdi12Ents<'a, S>
 where
     S: sdi12::Transmit<'a> + sdi12::Receive<'a>,
@@ -190,70 +206,67 @@ where
     fn command(
         &self,
         command_num: usize,
-        data1: usize,
+        _data1: usize,
         data2: usize,
         processid: ProcessId,
     ) -> CommandReturn {
-        // debug!("command syscall executing");
-        kernel::debug!("[k] SDI12 capsule command syscall {}", command_num);
-        kernel::debug!("[k] data1: {}, data2: {}", data1, data2);
-        match command_num {
-            // Driver existence check
-            0 => CommandReturn::success(),
-            // test send data command
-            1 => {
-                self.tx_in_progress.set(processid);
-                // copy data from userspace buffer to kernel
-                let len = self.grant.enter(processid, |_app, kernel_data| {
-                    let mut copied_len = 0;
-                    if let Ok(buffer) = kernel_data.get_readonly_processbuffer(ro_allow::TX_BUFFER)
-                    {
-                        let _ = buffer.enter(|data| {
-                            let max_len = data.len().min(self.tx_buffer.map_or(0, |b| b.len()));
-                            self.tx_buffer.map(|tx_buf| {
-                                for i in 0..max_len {
-                                    tx_buf[i] = data[i].get();
-                                }
-                                copied_len = max_len;
+        if let Some(cmd) = Cmd::from_usize(command_num) {
+            match cmd {
+                // Driver existence check
+                Cmd::Ping => CommandReturn::success(),
+                // test send data command
+                Cmd::Write => {
+                    self.tx_in_progress.set(processid);
+                    // copy data from userspace buffer to kernel
+                    let len = self.grant.enter(processid, |_app, kernel_data| {
+                        let mut copied_len = 0;
+                        if let Ok(buffer) = kernel_data.get_readonly_processbuffer(ro_allow::TX_BUFFER)
+                        {
+                            let _ = buffer.enter(|data| {
+                                let max_len = data.len().min(self.tx_buffer.map_or(0, |b| b.len()));
+                                self.tx_buffer.map(|tx_buf| {
+                                    data[..max_len].copy_to_slice(&mut tx_buf[..max_len]);
+                                    copied_len = max_len;
+                                });
                             });
-                        });
-                    }
-                    copied_len
-                });
-
-                match len {
-                    Ok(l) if l > 0 => match self.sdi12_send_from_buffer(l) {
-                        Ok(()) => CommandReturn::success(),
-                        Err(_) => {
-                            self.tx_in_progress.clear();
-                            CommandReturn::failure(ErrorCode::FAIL)
                         }
-                    },
-                    _ => {
-                        self.tx_in_progress.clear();
-                        CommandReturn::failure(ErrorCode::INVAL)
+                        copied_len
+                    });
+
+                    match len {
+                        Ok(l) if l > 0 => match self.sdi12_send_from_buffer(l) {
+                            Ok(()) => CommandReturn::success(),
+                            Err(_) => {
+                                self.tx_in_progress.clear();
+                                CommandReturn::failure(ErrorCode::FAIL)
+                            }
+                        },
+                        _ => {
+                            self.tx_in_progress.clear();
+                            CommandReturn::failure(ErrorCode::INVAL)
+                        }
                     }
                 }
-            }
-            2 => {
-                self.rx_in_progress.set(processid);
-                // test read data command
-                let size = data2;
+                Cmd::Read => {
+                    self.rx_in_progress.set(processid);
+                    // test read data command
+                    let size = data2;
 
-                // start receive and record process
-                match self.sdi12_start_receive(size) {
-                    Ok(_) => CommandReturn::success(),
-                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                    // start receive and record process
+                    match self.sdi12_start_receive(size) {
+                        Ok(_) => CommandReturn::success(),
+                        Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                    }
                 }
+                Cmd::WhoKnows => CommandReturn::success(),
             }
-            3 => CommandReturn::success(),
-            _ => CommandReturn::failure(ErrorCode::INVAL),
+        } else {
+            CommandReturn::failure(ErrorCode::NOSUPPORT)
         }
     }
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
         // Allocation is performed implicitly when the grant region is entered.
-        kernel::debug!("[k] Allocating SDI12 capsule grant for process {:?}", processid);
         self.grant.enter(processid, |_, _| {})
     }
 }
@@ -265,7 +278,6 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> TransmitClient for Sdi12En
         length: usize,
         status: Result<(), ErrorCode>,
     ) {
-        debug!("[k] SDI12 capsule Transmit complete, buffer returned");
         // Put the buffer back into the TakeCell for reuse
         self.tx_buffer.replace(buffer);
         self.state.set(State::Idle);
@@ -273,11 +285,13 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> TransmitClient for Sdi12En
         // Schedule upcall to notify userspace
         self.tx_in_progress.take().map(|processid| {
             let _ = self.grant.enter(processid, |_app, kernel_data| {
-                let ret_code = match status {
-                    Ok(()) => 0,
-                    Err(e) => usize::from(e),
-                };
-                let _ = kernel_data.schedule_upcall(upcall::SDI12_TX, (ret_code, length, 0));
+                let _ = kernel_data.schedule_upcall(
+                    upcall::SDI12_TX,
+                    (
+                        kernel::errorcode::into_statuscode(status),
+                        length,
+                        0)
+                    );
             });
         });
     }
@@ -291,20 +305,13 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> sdi12::ReceiveClient for S
         status: Result<(), ErrorCode>,
         _error: kernel::hil::uart::Error,
     ) {
-        debug!("[k] SDI12 capsule Receive complete, {} bytes received", length);
-
-        debug!("[k] SDI12 RAW buffer: {:?}", &buffer[..length]);
-
         // Copy received data to userspace buffer
         self.rx_in_progress.map(|processid| {
             let _ = self.grant.enter(processid, |_app, kernel_data| {
                 if let Ok(user_buf) = kernel_data.get_readwrite_processbuffer(rw_allow::RX_BUFFER) {
                     let _ = user_buf.mut_enter(|dest| {
                         let copy_len = length.min(dest.len());
-                        for i in 0..copy_len {
-                            dest[i].set(buffer[i] & 0x7F); // Mask off bit 7
-                        }
-                        debug!("[k] Copied {} bytes to userspace (bit 7 masked)", copy_len);
+                        dest[..copy_len].copy_from_slice(&buffer[..copy_len]);
                     });
                 }
             });
@@ -316,11 +323,13 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> sdi12::ReceiveClient for S
         // Schedule upcall to notify userspace
         self.rx_in_progress.take().map(|processid| {
             let _ = self.grant.enter(processid, |_app, kernel_data| {
-                let ret_code = match status {
-                    Ok(()) => 0,
-                    Err(e) => usize::from(e),
-                };
-                let _ = kernel_data.schedule_upcall(upcall::SDI12_RX, (ret_code, length, 0));
+                let _ = kernel_data.schedule_upcall(
+                    upcall::SDI12_RX,
+                    (
+                        kernel::errorcode::into_statuscode(status),
+                        length,
+                        0)
+                    );
             });
         });
     }
