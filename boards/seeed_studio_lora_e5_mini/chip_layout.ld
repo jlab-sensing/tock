@@ -3,15 +3,15 @@
 /* Copyright Tock Contributors 2025.                                  */
 
 /* Memory layout for the STM32WLE5JC 
- * rom = 256KB 
+ * rom = 252KB 
  * kernel = 128KB
  * user = 128KB
  * ram = 64KB */
 
 MEMORY
 {
-  rom (rx)  : ORIGIN = 0x08000000, LENGTH = 0x00020000
-  prog (rx) : ORIGIN = 0x08020000, LENGTH = 0x00020000
+  rom (rx)  : ORIGIN = 0x08000000, LENGTH = 0x00018000
+  prog (rx) : ORIGIN = 0x08018000, LENGTH = 0x00028000
   ram (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00010000
 }
 
