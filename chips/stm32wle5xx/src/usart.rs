@@ -592,14 +592,14 @@ impl hil::uart::Configure for Usart<'_> {
             && params.stop_bits == hil::uart::StopBits::One
             && params.parity == hil::uart::Parity::None
             && !params.hw_flow_control
-            && params.width == hil::uart::Width::Eight;
+            && params.width == hil::uart::Width::Seven;
 
         let sdi12_mode = 
             params.baud_rate == 1200
             && params.stop_bits == hil::uart::StopBits::One
             && params.parity == hil::uart::Parity::Even
             && !params.hw_flow_control
-            && params.width == hil::uart::Width::Seven;
+            && params.width == hil::uart::Width::Eight;
         
         if !(console_mode || sdi12_mode) {
             panic!("USART only supports console and sdi12 mode.");
