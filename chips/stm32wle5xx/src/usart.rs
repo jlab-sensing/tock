@@ -11,6 +11,7 @@ use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeabl
 use kernel::utilities::registers::{register_bitfields, ReadOnly, ReadWrite};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
+use kernel::debug;
 
 use crate::clocks::clocks::Stm32wle5xxClocks;
 use crate::clocks::phclk;
@@ -471,8 +472,9 @@ impl<'a> Usart<'a> {
                     self.rx_position.set(self.rx_position.get() + 1);
                 }
 
-                // Check if we have received all the bytes
-                if self.rx_position.get() == self.rx_len.get() {
+                let done = self.rx_position.get() == self.rx_len.get();
+
+                if done {
                     self.rx_status.set(USARTStateRX::Idle);
                     self.disable_receive_interrupt();
 
@@ -587,22 +589,10 @@ impl<'a> hil::uart::Transmit<'a> for Usart<'a> {
 impl hil::uart::Configure for Usart<'_> {
     fn configure(&self, params: hil::uart::Parameters) -> Result<(), ErrorCode> {
 
-        let console_mode = 
-            params.baud_rate == 115200
-            && params.stop_bits == hil::uart::StopBits::One
-            && params.parity == hil::uart::Parity::None
-            && !params.hw_flow_control
-            && params.width == hil::uart::Width::Seven;
-
-        let sdi12_mode = 
-            params.baud_rate == 1200
-            && params.stop_bits == hil::uart::StopBits::One
-            && params.parity == hil::uart::Parity::Even
-            && !params.hw_flow_control
-            && params.width == hil::uart::Width::Eight;
-        
-        if !(console_mode || sdi12_mode) {
-            panic!("USART only supports console and sdi12 mode.");
+        // Flow control
+        if params.hw_flow_control {
+            //panic!("Hardware flow control not supported");
+            return Err(ErrorCode::NOSUPPORT);
         }
 
         // Word length: handle 7 vs 8 later as needed
@@ -617,11 +607,23 @@ impl hil::uart::Configure for Usart<'_> {
                 self.registers.cr1.modify(CR1::M0::SET);
                 self.registers.cr1.modify(CR1::M1::CLEAR);
             }
-            _ => {}
+            _ => {
+                //panic!("Only USART width of 7 or 8 supported");
+                return Err(ErrorCode::NOSUPPORT);
+            }
         }
 
-        // Stop bits: already required to be One above
-        self.registers.cr2.modify(CR2::STOP.val(0b00_u32));
+        // Stop bits
+        match params.stop_bits {
+            hil::uart::StopBits::One => {
+                // Stop bits: already required to be One above
+                self.registers.cr2.modify(CR2::STOP.val(0b00_u32));
+            }
+            _ => {
+                //panic!("Only USART stop bit of 1 supported");
+                return Err(ErrorCode::NOSUPPORT);
+            }
+        }
 
         // Parity
         match params.parity {
@@ -633,7 +635,10 @@ impl hil::uart::Configure for Usart<'_> {
                 // PS = 0 => Even
                 self.registers.cr1.modify(CR1::PS::CLEAR); 
             }
-            _ => {}
+            _ => {
+                //panic!("Only parity of NONE or EVEN supported");
+                return Err(ErrorCode::NOSUPPORT);
+            }
         }
 
         // Baud: choose BRR based on requested baud and clock assumptions.

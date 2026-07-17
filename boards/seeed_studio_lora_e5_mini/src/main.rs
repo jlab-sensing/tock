@@ -23,7 +23,7 @@ use kernel::hil::gpio::{Configure as GpioConfigure, Output};
 use kernel::hil::led::LedLow;
 use kernel::hil::time::Alarm;
 use kernel::hil::time::Counter;
-use kernel::hil::uart::{Receive, Transmit};
+use kernel::hil::uart::{self, Configure, Receive, Transmit};
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::process::ProcessArray;
 use kernel::scheduler::round_robin::RoundRobinSched;
@@ -452,41 +452,31 @@ pub unsafe fn main() {
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
     });
-    
+
+    // setup usart2 peripheral
     base_peripherals.usart2.enable_clock();
+    let _ = base_peripherals.usart2.configure(uart::Parameters {
+        baud_rate: 1200,
+        width: uart::Width::Eight,
+        stop_bits: uart::StopBits::One,
+        parity: uart::Parity::Even,
+        hw_flow_control: false,
+    });
 
-
-    // Pin to control direction (default high)
+    // Pin to control direction (default low)
     let sdi12_command_pin = gpio_ports.get_pin(PinId::PC01).unwrap();
     sdi12_command_pin.make_output();
     sdi12_command_pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
     sdi12_command_pin.clear();
 
-
-    // Create UART mux for USART2 at SDI-12 baud rate (1200)
-    let uart_mux_2 = components::console::UartMuxComponent::new(&base_peripherals.usart2, 1200)
-        .finalize(components::uart_mux_component_static!());
-
-    // Create virtual UART device for SDI-12 using the component
-    let _sdi12_uart = components::sdi12::Sdi12Component::new(
-        uart_mux_2,
-        capsules_extra::sdi12_ents::DRIVER_NUM,
-    )
-    .finalize(components::sdi12_component_static!());
-
-
-    
-
-    // Alarm for sdi12 timing
+    // Alarm for SDI-12 timing
     let virtual_alarm = static_init!(
         VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
         VirtualMuxAlarm::new(mux_alarm)
     );
     virtual_alarm.setup();
 
-    // Need to pass pin directly so that it can break signals
-    // TODO: I think this can be removed if we send all 1s in UART message. We know the baud so we
-    // can calculate how many bits to send
+    // Pin for breaking signal (need to pass directly to SDI-12 driver)
     let sdi12_usart_pin = gpio_ports.get_pin(PinId::PA02).unwrap();
 
     let sdi12_driver = static_init!(
