@@ -604,8 +604,8 @@ impl hil::uart::Configure for Usart<'_> {
             hil::uart::Width::Seven => {
                 // Set M0/M1 according to reference manual for 7-bit words
                 // (adjust as required by the hardware)
-                self.registers.cr1.modify(CR1::M0::SET);
-                self.registers.cr1.modify(CR1::M1::CLEAR);
+                self.registers.cr1.modify(CR1::M1::SET);
+                self.registers.cr1.modify(CR1::M0::CLEAR);
             }
             _ => {
                 //panic!("Only USART width of 7 or 8 supported");

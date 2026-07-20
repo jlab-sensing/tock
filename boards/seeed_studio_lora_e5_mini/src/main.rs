@@ -454,6 +454,9 @@ pub unsafe fn main() {
     });
 
     // setup usart2 peripheral
+    // NOTE: This configuration is contrary to 7E1 specified by SDI12. The STM32 peripheral
+    // includes the parity bit as part of the width. So by a width of 8E1, the 8th bit is the
+    // parity bit. Also needs to be cleared in software, go figure...
     base_peripherals.usart2.enable_clock();
     let _ = base_peripherals.usart2.configure(uart::Parameters {
         baud_rate: 1200,
