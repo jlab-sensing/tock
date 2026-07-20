@@ -83,6 +83,11 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> sdi12::Transmit<'a> for Sdi12<'a, U, A> {
             }
         }
 
+
+        // send break command
+        self.uart_pin.make_output();
+        self.uart_pin.clear();
+
         let interval = self.alarm.ticks_from_ms(WAKE_SENSORS_INTERVAL_MS);
         self.alarm.set_alarm(self.alarm.now(), interval);
 
@@ -113,10 +118,6 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> sdi12::Receive<'a> for Sdi12<'a, U, A> {
 
 impl<'a, U: Uart<'a>, A: Alarm<'a>> AlarmClient for Sdi12<'a, U, A> {
     fn alarm(&self) {
-        // Time to hold high has elapsed. Reconfigure as alternate function
-        // for USART transmission.
-        self.uart_pin.set_mode(Mode::AlternateFunctionMode);
-        self.uart_pin.set_alternate_function(AlternateFunction::AF7);
 
         let state = self.state.take().unwrap();
         match state {
@@ -135,6 +136,11 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> AlarmClient for Sdi12<'a, U, A> {
                 self.alarm.set_alarm(self.alarm.now(), interval);
             }
             Sdi12State::Tx(len, data) => {
+                // Time to hold high has elapsed. Reconfigure as alternate function
+                // for USART transmission.
+                self.uart_pin.set_mode(Mode::AlternateFunctionMode);
+                self.uart_pin.set_alternate_function(AlternateFunction::AF7);
+
                 if let Err((err, buf)) = self.uart.transmit_buffer(data, len) {
                     // Transmission failed, return to Idle state and notify client.
                     self.state.replace(Sdi12State::Idle);
