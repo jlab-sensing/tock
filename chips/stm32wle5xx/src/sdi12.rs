@@ -83,7 +83,6 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> sdi12::Transmit<'a> for Sdi12<'a, U, A> {
             }
         }
 
-
         // send break command
         self.uart_pin.make_output();
         self.uart_pin.clear();
@@ -118,7 +117,6 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> sdi12::Receive<'a> for Sdi12<'a, U, A> {
 
 impl<'a, U: Uart<'a>, A: Alarm<'a>> AlarmClient for Sdi12<'a, U, A> {
     fn alarm(&self) {
-
         let state = self.state.take().unwrap();
         match state {
             Sdi12State::Idle => {
