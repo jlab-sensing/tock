@@ -5,13 +5,13 @@
 use cortexm4::support::with_interrupts_disabled;
 use enum_primitive::cast::FromPrimitive;
 use enum_primitive::enum_from_primitive;
+use kernel::debug;
 use kernel::hil;
 use kernel::platform::chip::ClockInterface;
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::registers::{register_bitfields, ReadOnly, ReadWrite, WriteOnly};
 use kernel::utilities::StaticRef;
-use kernel::debug;
 
 use crate::clocks::{phclk, Stm32wle5xxClocks};
 use crate::exti;

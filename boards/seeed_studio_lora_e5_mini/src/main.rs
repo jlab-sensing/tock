@@ -35,7 +35,6 @@ use stm32wle5jc::gpio::{PinId, PortId};
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
 
-
 /// Support routines for debugging I/O.
 pub mod io;
 
@@ -270,8 +269,6 @@ pub unsafe fn main() {
     gpio_ports.get_port_from_port_id(PortId::B).enable_clock();
     gpio_ports.get_port_from_port_id(PortId::A).enable_clock();
     gpio_ports.get_port_from_port_id(PortId::C).enable_clock();
-   
-
 
     //--------------------------------------------------------------------
     // Usart
@@ -291,7 +288,6 @@ pub unsafe fn main() {
 
     let uart_mux_1 = components::console::UartMuxComponent::new(&base_peripherals.usart1, 115200)
         .finalize(components::uart_mux_component_static!());
-
 
     (*addr_of_mut!(io::WRITER)).set_initialized();
 
@@ -433,8 +429,6 @@ pub unsafe fn main() {
     // Uncomment to run I2C scan test
     // test::i2c_dummy::i2c_scan_slaves(&base_peripherals.i2c2);
 
-
-
     //--------------------------------------------------------------------
     // SDI12
     //--------------------------------------------------------------------
@@ -446,7 +440,7 @@ pub unsafe fn main() {
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
     });
-    
+
     gpio_ports.get_pin(PinId::PA03).map(|pin| {
         pin.make_input();
         pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
@@ -513,8 +507,6 @@ pub unsafe fn main() {
         ),
     );
 
-
-
     //--------------------------------------------------------------------
     // PROCESS CONSOLE
     //--------------------------------------------------------------------
@@ -532,9 +524,6 @@ pub unsafe fn main() {
 
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
-
-
-
 
     let seeed_studio_lora_e5_mini = SeeedStudioLoraE5Mini {
         scheduler,

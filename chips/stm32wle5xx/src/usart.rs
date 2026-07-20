@@ -11,7 +11,6 @@ use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeabl
 use kernel::utilities::registers::{register_bitfields, ReadOnly, ReadWrite};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
-use kernel::debug;
 
 use crate::clocks::clocks::Stm32wle5xxClocks;
 use crate::clocks::phclk;
@@ -463,7 +462,6 @@ impl<'a> Usart<'a> {
 
             // ignore IRQ if not receiving
             if self.rx_status.get() == USARTStateRX::Receiving {
-                
                 // Get next byte
                 if self.rx_position.get() < self.rx_len.get() {
                     self.rx_buffer.map(|buf| {
@@ -588,7 +586,6 @@ impl<'a> hil::uart::Transmit<'a> for Usart<'a> {
 
 impl hil::uart::Configure for Usart<'_> {
     fn configure(&self, params: hil::uart::Parameters) -> Result<(), ErrorCode> {
-
         // Flow control
         if params.hw_flow_control {
             //panic!("Hardware flow control not supported");
@@ -633,7 +630,7 @@ impl hil::uart::Configure for Usart<'_> {
             hil::uart::Parity::Even => {
                 self.registers.cr1.modify(CR1::PCE::SET);
                 // PS = 0 => Even
-                self.registers.cr1.modify(CR1::PS::CLEAR); 
+                self.registers.cr1.modify(CR1::PS::CLEAR);
             }
             _ => {
                 //panic!("Only parity of NONE or EVEN supported");

@@ -13,7 +13,7 @@ use kernel::utilities::cells::{MapCell, OptionalCell};
 use kernel::ErrorCode;
 
 const WAKE_SENSORS_INTERVAL_MS: u32 = 13;
-const MARKIING_INTERVAL_MS: u32 = 9;
+const MARKING_INTERVAL_MS: u32 = 9;
 
 use crate::gpio::{AlternateFunction, Mode};
 
@@ -61,15 +61,12 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> sdi12::Transmit<'a> for Sdi12<'a, U, A> {
         // We unwrap here because this is undefined if the state
         // is None (e.g. should only ever be mapped).
         let state = self.state.take().unwrap();
-        kernel::debug!("[k] SDI12: Transmit requested");
 
         // Set command pin low to prepare for transmission
-        kernel::debug!("[k] Clearing command pin");
         self.command_pin.clear();
 
         match state {
             Sdi12State::Idle => {
-                kernel::debug!("[k] SDI12: Moving to TxBreak state");
                 self.state.replace(Sdi12State::TxBreak(len, data));
             }
             Sdi12State::Tx(enum_len, enum_data) => {
@@ -86,11 +83,8 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> sdi12::Transmit<'a> for Sdi12<'a, U, A> {
             }
         }
 
-
         let interval = self.alarm.ticks_from_ms(WAKE_SENSORS_INTERVAL_MS);
         self.alarm.set_alarm(self.alarm.now(), interval);
-
-
 
         Ok(())
     }
@@ -106,19 +100,9 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> sdi12::Receive<'a> for Sdi12<'a, U, A> {
         buffer: &'static mut [u8],
         max_len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
-        kernel::debug!("[k] SDI12: Receive requested");
-
-        
-
         match self.uart.receive_buffer(buffer, max_len) {
-            Ok(()) => {
-                kernel::debug!("[k] SDI12: UART receive started successfully");
-                Ok(())
-            }
-            Err((err, buf)) => {
-                kernel::debug!("[k] SDI12: UART receive failed with error: {:?}", err);
-                Err((ErrorCode::FAIL, buf))
-            }
+            Ok(()) => Ok(()),
+            Err((_err, buf)) => Err((ErrorCode::FAIL, buf)),
         }
     }
 
@@ -138,37 +122,24 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> AlarmClient for Sdi12<'a, U, A> {
         match state {
             Sdi12State::Idle => {
                 // Should not happen.
-                unreachable!("[k] SDI12 Alarm fired in Idle state.");
+                unreachable!("SDI12 Alarm fired in Idle state.");
             }
             Sdi12State::TxBreak(len, data) => {
                 // Time to send marking interval.
-                kernel::debug!("[k] SDI12: Sending breaking signal");
                 // let mut data: [u8; 2] = *b"0!"; // send break
                 self.state.replace(Sdi12State::Tx(len, data)); // placeholder length and data
                 self.uart_pin.make_output();
-                self.uart_pin.clear();
+                self.uart_pin.set();
 
-                let interval = self.alarm.ticks_from_ms(MARKIING_INTERVAL_MS);
+                let interval = self.alarm.ticks_from_ms(MARKING_INTERVAL_MS);
                 self.alarm.set_alarm(self.alarm.now(), interval);
             }
             Sdi12State::Tx(len, data) => {
-                kernel::debug!("[k] SDI12: Transmitting data");
-                kernel::debug!("[k] SDI12: Data length: {}", len);
-                kernel::debug!(
-                    "[k] SDI12: Data content: {}",
-                    core::str::from_utf8(&data[..len]).unwrap_or("<invalid utf8>")
-                );
-                match self.uart.transmit_buffer(data, len) {
-                    Ok(()) => {
-                        kernel::debug!("[k] SDI12: UART transmit started successfully");
-                    }
-                    Err((err, buf)) => {
-                        kernel::debug!("[k] SDI12: UART transmit failed with error: {:?}", err);
-                        // Transmission failed, return to Idle state and notify client.
-                        self.state.replace(Sdi12State::Idle);
-                        self.tx_client
-                            .map(|client| client.transmitted_buffer(buf, len, Err(err)));
-                    }
+                if let Err((err, buf)) = self.uart.transmit_buffer(data, len) {
+                    // Transmission failed, return to Idle state and notify client.
+                    self.state.replace(Sdi12State::Idle);
+                    self.tx_client
+                        .map(|client| client.transmitted_buffer(buf, len, Err(err)));
                 }
             }
         }
@@ -182,12 +153,9 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> uart::TransmitClient for Sdi12<'a, U, A> {
         length: usize,
         status: Result<(), ErrorCode>,
     ) {
-
-        kernel::debug!("[k] Setting command pin");
         self.command_pin.set(); // set control pin high for RX mode
 
         // Transmission complete, set command pin high, return to Idle state and notify client.
-        kernel::debug!("[k] SDI12: Transmission complete");
         self.state.replace(Sdi12State::Idle);
         self.tx_client
             .map(|client| client.transmitted_buffer(buffer, length, status));
@@ -202,7 +170,6 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> uart::ReceiveClient for Sdi12<'a, U, A> {
         status: Result<(), ErrorCode>,
         error: Error,
     ) {
-        kernel::debug!("[k] SDI12: Reception complete");
         self.state.replace(Sdi12State::Idle);
         self.rx_client
             .map(|client| client.receive_buffer(buffer, length, status, error));

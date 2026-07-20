@@ -24,7 +24,6 @@ use enum_primitive::enum_from_primitive;
 
 use capsules_core::driver;
 use core::cell::Cell;
-use kernel::debug;
 use kernel::errorcode::ErrorCode;
 use kernel::grant::UpcallCount;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant};
@@ -116,7 +115,6 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> Sdi12Ents<'a, S> {
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
     ) -> Sdi12Ents<'a, S> {
-        debug!("Initializing SDI12 capsule");
         Sdi12Ents {
             state: Cell::new(State::Idle),
             tx_buffer: TakeCell::new(tx_buffer),
@@ -141,8 +139,6 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> Sdi12Ents<'a, S> {
         self.state.set(State::SendingCommand);
 
         if let Some(buffer) = self.tx_buffer.take() {
-            debug!("Beginning capsule call of SDI12 driver");
-            debug!("Data to send: {:?}", &buffer[..len]);
             match self.sdi12.transmit(buffer, len) {
                 Ok(()) => Ok(()),
                 Err((e, buf)) => {
@@ -196,8 +192,6 @@ enum_from_primitive! {
         WhoKnows = 3,
     }
 }
-        
-
 
 impl<'a, S> SyscallDriver for Sdi12Ents<'a, S>
 where
@@ -220,7 +214,8 @@ where
                     // copy data from userspace buffer to kernel
                     let len = self.grant.enter(processid, |_app, kernel_data| {
                         let mut copied_len = 0;
-                        if let Ok(buffer) = kernel_data.get_readonly_processbuffer(ro_allow::TX_BUFFER)
+                        if let Ok(buffer) =
+                            kernel_data.get_readonly_processbuffer(ro_allow::TX_BUFFER)
                         {
                             let _ = buffer.enter(|data| {
                                 let max_len = data.len().min(self.tx_buffer.map_or(0, |b| b.len()));
@@ -287,11 +282,8 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> TransmitClient for Sdi12En
             let _ = self.grant.enter(processid, |_app, kernel_data| {
                 let _ = kernel_data.schedule_upcall(
                     upcall::SDI12_TX,
-                    (
-                        kernel::errorcode::into_statuscode(status),
-                        length,
-                        0)
-                    );
+                    (kernel::errorcode::into_statuscode(status), length, 0),
+                );
             });
         });
     }
@@ -325,11 +317,8 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> sdi12::ReceiveClient for S
             let _ = self.grant.enter(processid, |_app, kernel_data| {
                 let _ = kernel_data.schedule_upcall(
                     upcall::SDI12_RX,
-                    (
-                        kernel::errorcode::into_statuscode(status),
-                        length,
-                        0)
-                    );
+                    (kernel::errorcode::into_statuscode(status), length, 0),
+                );
             });
         });
     }

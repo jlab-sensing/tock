@@ -64,7 +64,7 @@ macro_rules! sdi12_ents_static {
 ///
 /// This function handles the full SDI-12 driver setup including buffer allocation,
 /// grant allocation, and userspace driver interface setup.
-/// 
+///
 /// Note: The caller must ensure the returned pointer is stored in static memory
 /// and lives for the entire program lifetime.
 pub fn init_sdi12_ents<'a, S>(
