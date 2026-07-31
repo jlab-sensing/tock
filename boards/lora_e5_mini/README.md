@@ -17,6 +17,28 @@ connected to the board's SWD pins for programming.
 Once you have all software installed, you should be able to simply run
 `make flash` in this directory to install a fresh kernel.
 
+Optional Cargo features can be enabled at build time and used with
+`#[cfg(feature = "...")]` in the board file:
+
+```bash
+$ make flash -- --dev
+# or individually:
+$ make flash -- --process-console --debug-macro --halt-on-panic
+# or:
+$ make flash dev=1
+$ make flash process-console=1 debug-macro=1 halt-on-panic=1
+```
+
+- `--dev` — development convenience superset: enables process console,
+  `debug!()`, and halt-on-panic fault policy
+- `--process-console` — include the process console
+- `--debug-macro` — include `debug!()` support
+- `--halt-on-panic` — on process fault or kernel panic, halt the system
+
+The standard build (without these flags) defaults to removing the process
+console and `debug!()` to reduce the codesize. Additionally, the size of the
+kernel stack is decreased in the standard build.
+
 ## Programming user-level applications
 You can program an application over USB using `tockloader`:
 
