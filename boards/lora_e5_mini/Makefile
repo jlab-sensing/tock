@@ -70,6 +70,11 @@ flash: $(TOCK_ROOT_DIRECTORY)target/$(TARGET)/release/$(PLATFORM).bin
 erase-all:
 	$(OPENOCD) -f interface/stlink.cfg -c "transport select hla_swd" -f target/stm32wlx.cfg -c "init; reset halt; flash erase_sector 0 0 last; reset; shutdown"
 
+# Build-check every optional feature combination (see test-feature-configs.sh).
+.PHONY: test-features
+test-features:
+	./test-feature-configs.sh
+
 # Absorb optional feature goals (must not be the first target — that would
 # make bare `make` a no-op). Depend on `all` so `make -- --dev` still builds.
 .PHONY: --dev dev --process-console process-console --debug-macro debug-macro \

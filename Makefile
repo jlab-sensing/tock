@@ -222,7 +222,8 @@ prepush:\
 	format-check\
 	ci-job-clippy\
 	ci-job-syntax\
-	licensecheck
+	licensecheck\
+	ci-job-lora-e5-mini-features
 	$(call banner,Pre-Push checks all passed!)
 	# Note: Tock runs additional and more intense CI checks on all PRs.
 	# If one of these error, you can run `make ci-job-NAME` to test locally.
@@ -424,6 +425,11 @@ ci-job-clippy:
 ci-job-syntax:
 	$(call banner,CI-Job: Syntax)
 	@NOWARNINGS=true $(MAKE) allcheck
+
+.PHONY: ci-job-lora-e5-mini-features
+ci-job-lora-e5-mini-features:
+	$(call banner,CI-Job: LoRa E5 Mini feature configs)
+	@FAIL_ON_WARN=1 $(MAKE) -C boards/lora_e5_mini test-features
 
 .PHONY: ci-job-compilation
 ci-job-compilation:
