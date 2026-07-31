@@ -51,6 +51,9 @@ debug_load_processes = []
 no_debug_panics = []
 debug_process_credentials = []
 flux = ["flux-rs"]
+# Compile `debug!()` to a no-op. Enabled by boards that need a smaller binary;
+# otherwise `debug!()` prints through the kernel debug writer as usual.
+no_debug_macro = []
 
 [lints]
 workspace = true

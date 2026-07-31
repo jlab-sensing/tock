@@ -12,6 +12,7 @@
 #![cfg_attr(not(doc), no_main)]
 #![deny(missing_docs)]
 
+#[cfg(feature = "debug-macro")]
 use core::ptr::addr_of_mut;
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
@@ -58,23 +59,47 @@ type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
 static PANIC_RESOURCES: SingleThreadValue<PanicResources<ChipHw, ProcessPrinterInUse>> =
     SingleThreadValue::new();
 
-// How should the kernel respond when a process faults.
+// How should the kernel respond when a process faults. Conditionally compiled
+// to restart or halt the system on panic. `halt-on-panic` is a makefile flag.
+#[cfg(feature = "halt-on-panic")]
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
+
+#[cfg(not(feature = "halt-on-panic"))]
+const FAULT_RESPONSE: capsules_system::process_policies::RestartFaultPolicy =
+    capsules_system::process_policies::RestartFaultPolicy {};
 
 const LORA_SPI_DRIVER_NUM: usize = capsules_core::driver::NUM::LoRaPhySPI as usize;
 const LORA_GPIO_DRIVER_NUM: usize = capsules_core::driver::NUM::LoRaPhyGPIO as usize;
 
-/// Dummy buffer that causes the linker to reserve enough space for the stack.
+/// Dummy buffer that causes the linker to reserve enough space for the stack when
+/// building the development version.
+#[cfg(any(
+    feature = "process-console",
+    feature = "debug-macro",
+    feature = "halt-on-panic"
+))]
 #[no_mangle]
 #[link_section = ".stack_buffer"]
 pub static mut STACK_MEMORY: [u8; 0x1500] = [0; 0x1500];
+
+/// Dummy buffer that causes the linker to reserve enough space for the stack when
+/// building the release/deploy version.
+#[cfg(not(any(
+    feature = "process-console",
+    feature = "debug-macro",
+    feature = "halt-on-panic"
+)))]
+#[no_mangle]
+#[link_section = ".stack_buffer"]
+pub static mut STACK_MEMORY: [u8; 0x1000] = [0; 0x1000];
 
 /// A structure representing this platform that holds references to all
 /// capsules for this platform.
 struct LoraE5Mini {
     scheduler: &'static SchedulerInUse,
     systick: cortexm4::systick::SysTick,
+    #[cfg(feature = "process-console")]
     console: &'static capsules_core::console::Console<'static>,
     ipc: kernel::ipc::IPC<{ NUM_PROCS as u8 }>,
     led: &'static capsules_core::led::LedDriver<
@@ -124,6 +149,7 @@ impl SyscallDriverLookup for LoraE5Mini {
         F: FnOnce(Option<&dyn kernel::syscall::SyscallDriver>) -> R,
     {
         match driver_num {
+            #[cfg(feature = "process-console")]
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::led::DRIVER_NUM => f(Some(self.led)),
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
@@ -307,9 +333,11 @@ pub unsafe fn main() {
         pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
     });
 
+    #[cfg(any(feature = "process-console", feature = "debug-macro"))]
     let uart_mux = components::console::UartMuxComponent::new(&base_peripherals.usart1, 115200)
         .finalize(components::uart_mux_component_static!());
 
+    #[cfg(feature = "debug-macro")]
     (*addr_of_mut!(io::WRITER)).set_initialized();
 
     //--------------------------------------------------------------------
@@ -330,6 +358,7 @@ pub unsafe fn main() {
     //--------------------------------------------------------------------
     // Console.
     //--------------------------------------------------------------------
+    #[cfg(feature = "process-console")]
     let console = components::console::ConsoleComponent::new(
         board_kernel,
         capsules_core::console::DRIVER_NUM,
@@ -338,6 +367,7 @@ pub unsafe fn main() {
     .finalize(components::console_component_static!());
 
     // Create the debugger object that handles calls to `debug!()`.
+    #[cfg(feature = "debug-macro")]
     components::debug_writer::DebugWriterComponent::new::<
         <ChipHw as kernel::platform::chip::Chip>::ThreadIdProvider,
     >(
@@ -346,8 +376,11 @@ pub unsafe fn main() {
     )
     .finalize(components::debug_writer_component_static!());
 
+    #[cfg(any(feature = "halt-on-panic", feature = "process-console"))]
     let process_printer = components::process_printer::ProcessPrinterTextComponent::new()
         .finalize(components::process_printer_text_component_static!());
+
+    #[cfg(feature = "halt-on-panic")]
     PANIC_RESOURCES.get().map(|resources| {
         resources.printer.put(process_printer);
     });
@@ -605,6 +638,7 @@ pub unsafe fn main() {
     //--------------------------------------------------------------------
     // PROCESS CONSOLE
     //--------------------------------------------------------------------
+    #[cfg(feature = "process-console")]
     let process_console = components::process_console::ProcessConsoleComponent::new(
         board_kernel,
         uart_mux,
@@ -615,6 +649,8 @@ pub unsafe fn main() {
     .finalize(components::process_console_component_static!(
         stm32wle5jc::tim2::Tim2
     ));
+
+    #[cfg(feature = "process-console")]
     let _ = process_console.start();
 
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
@@ -625,6 +661,7 @@ pub unsafe fn main() {
         systick: cortexm4::systick::SysTick::new_with_calibration(
             (MSI_FREQUENCY_MHZ * 1_000_000) as u32,
         ),
+        #[cfg(feature = "process-console")]
         console,
         ipc: kernel::ipc::IPC::new(
             board_kernel,

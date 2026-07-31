@@ -39,6 +39,14 @@ The standard build (without these flags) defaults to removing the process
 console and `debug!()` to reduce the codesize. Additionally, the size of the
 kernel stack is decreased in the standard build.
 
+To build-check every feature combination:
+
+```bash
+$ make test-features
+# or:
+$ ./test-feature-configs.sh
+```
+
 ## Programming user-level applications
 You can program an application over USB using `tockloader`:
 

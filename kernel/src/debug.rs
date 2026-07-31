@@ -650,6 +650,7 @@ pub fn debug_verbose_println(args: Arguments, file_line: &(&'static str, u32)) {
 }
 
 /// In-kernel `println()` debugging.
+#[cfg(not(feature = "no_debug_macro"))]
 #[macro_export]
 macro_rules! debug {
     () => ({
@@ -661,6 +662,20 @@ macro_rules! debug {
     });
     ($fmt:expr, $($arg:tt)+) => ({
         $crate::debug::debug_println(format_args!($fmt, $($arg)+));
+    });
+}
+
+#[cfg(feature = "no_debug_macro")]
+#[macro_export]
+macro_rules! debug {
+    // No-op that still type-checks / "uses" arguments so call sites do not
+    // warn about unused variables. `format_args!` is evaluated and discarded;
+    // with LTO + opt-level=z this does not keep formatting code in the binary.
+    // Expand to a block expression so `debug!(...)` is valid in expression
+    // position (e.g. as an `if` body without a trailing `;`).
+    () => ({});
+    ($($arg:tt)+) => ({
+        let _ = ::core::format_args!($($arg)+);
     });
 }
 
