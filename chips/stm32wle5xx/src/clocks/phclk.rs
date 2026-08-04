@@ -290,7 +290,7 @@ impl ClockInterface for PeripheralClock<'_> {
                     unimplemented!()
                 }
             },
-            PeripheralClockType::RTC => rcc.enable_rtc_clock(RtcClockSource::LSI),
+            PeripheralClockType::RTC => rcc.enable_rtc_clock(RtcClockSource::LSE),
             PeripheralClockType::APB3(ref v) => match v {
                 PCLK3::SUBGHZSPI => rcc.enable_subghzspi_clock(),
             },
