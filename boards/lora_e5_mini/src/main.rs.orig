@@ -15,16 +15,13 @@
 use core::ptr::addr_of_mut;
 
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
-use capsules_extra::sdi12_ents::Sdi12Ents;
 use components::gpio::GpioComponent;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::debug::PanicResources;
-use kernel::hil::gpio::{Configure as GpioConfigure, Output};
+use kernel::hil::gpio::{Configure, Output};
 use kernel::hil::led::LedLow;
-use kernel::hil::time::Alarm;
 use kernel::hil::time::Counter;
-use kernel::hil::uart::{self, Configure as UartConfigure, Receive, Transmit};
 use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::utilities::single_thread_value::SingleThreadValue;
 use kernel::{create_capability, debug, static_init};
@@ -34,6 +31,7 @@ use stm32wle5jc::device_signature::Uid64;
 use stm32wle5jc::gpio::{PinId, PortId};
 use stm32wle5jc::interrupt_service::Stm32wle5jcDefaultPeripherals;
 use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
+use components::gpio::GpioComponent;
 
 /// Support routines for debugging I/O.
 pub mod io;
@@ -106,15 +104,11 @@ struct LoraE5Mini {
         stm32wle5jc::rtc::Rtc<'static>,
     >,
     eui64: &'static capsules_extra::eui64::Eui64,
+<<<<<<< HEAD
     gpio: &'static capsules_core::gpio::GPIO<'static, stm32wle5jc::gpio::Pin<'static>>,
-    sdi12_ents: &'static Sdi12Ents<
-        'static,
-        stm32wle5jc::sdi12::Sdi12<
-            'static,
-            stm32wle5jc::usart::Usart<'static>,
-            VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
-        >,
-    >,
+=======
+    gpio: &'static capsules_core::gpio::GPIO<'static, stm32wle5jc::gpio::Pin<'static>>
+>>>>>>> 0f2ed3ca9 (Added gpio syscall interface)
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -134,7 +128,6 @@ impl SyscallDriverLookup for LoraE5Mini {
             capsules_extra::date_time::DRIVER_NUM => f(Some(self.date_time)),
             capsules_extra::eui64::DRIVER_NUM => f(Some(self.eui64)),
             capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
-            capsules_extra::sdi12_ents::DRIVER_NUM => f(Some(self.sdi12_ents)),
             _ => f(None),
         }
     }
@@ -288,7 +281,6 @@ pub unsafe fn main() {
     let gpio_ports = &base_peripherals.gpio_ports;
     gpio_ports.get_port_from_port_id(PortId::B).enable_clock();
     gpio_ports.get_port_from_port_id(PortId::A).enable_clock();
-    gpio_ports.get_port_from_port_id(PortId::C).enable_clock();
 
     //--------------------------------------------------------------------
     // Usart
@@ -493,6 +485,42 @@ pub unsafe fn main() {
     let eui64 = components::eui64::Eui64Component::new(device_eui64)
         .finalize(components::eui64_component_static!());
 
+
+    //--------------------------------------------------------------------
+    // GPIO
+    //--------------------------------------------------------------------
+  
+
+    // ordering was done by going counterclockwise around available pins on the Wio-E5 from
+    // KiCAD
+
+
+    let gpio = GpioComponent::new(
+        board_kernel,
+        capsules_core::gpio::DRIVER_NUM,
+        components::gpio_component_helper!(
+            stm32wle5jc::gpio::Pin,
+            // wakeup pin 
+            1 => gpio_ports.get_pin(PinId::PA00).unwrap(),
+            // ADC_DRDY
+            2 => gpio_ports.get_pin(PinId::PC00).unwrap(),
+            // PG
+            3 => gpio_ports.get_pin(PinId::PA10).unwrap(),
+            // CHG
+            4 => gpio_ports.get_pin(PinId::PB14).unwrap(),
+            // VBAT/2
+            5 => gpio_ports.get_pin(PinId::PB13).unwrap(),
+            // ESP32_EN
+            6 => gpio_ports.get_pin(PinId::PB10).unwrap(),
+            // POWERDOWN
+            7 => gpio_ports.get_pin(PinId::PA09).unwrap()
+
+        )
+    )
+    .finalize(components::gpio_component_static!(stm32wle5jc::gpio::Pin));
+            
+
+
     //--------------------------------------------------------------------
     // GPIO
     //--------------------------------------------------------------------
@@ -523,84 +551,6 @@ pub unsafe fn main() {
         ),
     )
     .finalize(components::gpio_component_static!(stm32wle5jc::gpio::Pin));
-
-    //--------------------------------------------------------------------
-    // SDI12
-    //--------------------------------------------------------------------
-
-    // Setup USART2 GPIO pins: PA2=TX, PA3=RX
-    gpio_ports.get_pin(PinId::PA02).map(|pin| {
-        pin.make_output();
-        pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
-        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
-        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
-    });
-
-    gpio_ports.get_pin(PinId::PA03).map(|pin| {
-        pin.make_input();
-        pin.set_mode(stm32wle5jc::gpio::Mode::AlternateFunctionMode);
-        pin.set_alternate_function(stm32wle5jc::gpio::AlternateFunction::AF7);
-    });
-
-    // setup usart2 peripheral
-    // NOTE: This configuration is contrary to 7E1 specified by SDI12. The STM32 peripheral
-    // includes the parity bit as part of the width. So by a width of 8E1, the 8th bit is the
-    // parity bit. Also needs to be cleared in software, go figure...
-    base_peripherals.usart2.enable_clock();
-    let _ = base_peripherals.usart2.configure(uart::Parameters {
-        baud_rate: 1200,
-        width: uart::Width::Eight,
-        stop_bits: uart::StopBits::One,
-        parity: uart::Parity::Even,
-        hw_flow_control: false,
-    });
-
-    // Pin to control direction (default low)
-    let sdi12_command_pin = gpio_ports.get_pin(PinId::PC01).unwrap();
-    sdi12_command_pin.make_output();
-    sdi12_command_pin.set_floating_state(kernel::hil::gpio::FloatingState::PullNone);
-    sdi12_command_pin.clear();
-
-    // Alarm for SDI-12 timing
-    let virtual_alarm = static_init!(
-        VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
-        VirtualMuxAlarm::new(mux_alarm)
-    );
-    virtual_alarm.setup();
-
-    // Pin for breaking signal (need to pass directly to SDI-12 driver)
-    let sdi12_usart_pin = gpio_ports.get_pin(PinId::PA02).unwrap();
-
-    let sdi12_driver = static_init!(
-        stm32wle5jc::sdi12::Sdi12<
-            'static,
-            stm32wle5jc::usart::Usart<'static>,
-            VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
-        >,
-        stm32wle5jc::sdi12::Sdi12::new(
-            &base_peripherals.usart2,
-            sdi12_usart_pin,
-            sdi12_command_pin,
-            virtual_alarm,
-        )
-    );
-
-    virtual_alarm.set_alarm_client(sdi12_driver);
-    base_peripherals.usart2.set_transmit_client(sdi12_driver);
-    base_peripherals.usart2.set_receive_client(sdi12_driver);
-
-    let sdi12_ents = components::sdi12::init_sdi12_ents(
-        board_kernel,
-        capsules_extra::sdi12_ents::DRIVER_NUM,
-        sdi12_driver,
-        components::sdi12_ents_static!(
-            stm32wle5jc::sdi12::Sdi12<
-                'static,
-                stm32wle5jc::usart::Usart<'static>,
-                VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
-            >,
-        ),
-    );
 
     //--------------------------------------------------------------------
     // PROCESS CONSOLE
@@ -638,8 +588,11 @@ pub unsafe fn main() {
         i2c_master,
         date_time,
         eui64,
+<<<<<<< HEAD
         gpio,
-        sdi12_ents,
+=======
+        gpio
+>>>>>>> 0f2ed3ca9 (Added gpio syscall interface)
     };
 
     assert!(base_peripherals.subghz_spi.is_enabled_clock());
