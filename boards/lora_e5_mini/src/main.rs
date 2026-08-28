@@ -18,6 +18,7 @@ use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use capsules_extra::sdi12_ents::Sdi12Ents;
 use components::gpio::GpioComponent;
 use kernel::capabilities;
+use kernel::capabilities::ProcessRestartCapability;
 use kernel::component::Component;
 use kernel::debug::PanicResources;
 use kernel::hil::gpio::{Configure as GpioConfigure, Output};
@@ -53,6 +54,16 @@ const NUM_PROCS: usize = 4;
 type ProcessPrinterInUse = capsules_system::process_printer::ProcessPrinterText;
 
 type SchedulerInUse = components::sched::round_robin::RoundRobinComponentType;
+
+/// Capability for restarting processes needed for the app software watchdog.
+struct PRCapability;
+unsafe impl ProcessRestartCapability for PRCapability {}
+
+type AppSoftwareWatchdog = capsules_extra::app_software_watchdog::AppSoftwareWatchdog<
+    'static,
+    VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
+    PRCapability,
+>;
 
 /// Resources for when a board panics used by io.rs.
 static PANIC_RESOURCES: SingleThreadValue<PanicResources<ChipHw, ProcessPrinterInUse>> =
@@ -115,6 +126,7 @@ struct LoraE5Mini {
             VirtualMuxAlarm<'static, stm32wle5jc::tim2::Tim2<'static>>,
         >,
     >,
+    app_software_watchdog: &'static AppSoftwareWatchdog,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -135,6 +147,9 @@ impl SyscallDriverLookup for LoraE5Mini {
             capsules_extra::eui64::DRIVER_NUM => f(Some(self.eui64)),
             capsules_core::gpio::DRIVER_NUM => f(Some(self.gpio)),
             capsules_extra::sdi12_ents::DRIVER_NUM => f(Some(self.sdi12_ents)),
+            capsules_extra::app_software_watchdog::DRIVER_NUM => {
+                f(Some(self.app_software_watchdog))
+            }
             _ => f(None),
         }
     }
@@ -617,6 +632,20 @@ pub unsafe fn main() {
     ));
     let _ = process_console.start();
 
+    //--------------------------------------------------------------------
+    // App Software Watchdog
+    //--------------------------------------------------------------------
+    let app_software_watchdog =
+        components::app_software_watchdog::AppSoftwareWatchdogComponent::new(
+            mux_alarm,
+            board_kernel,
+            PRCapability,
+        )
+        .finalize(components::app_softare_watchdog_component_static!(
+            stm32wle5jc::tim2::Tim2,
+            PRCapability
+        ));
+
     let scheduler = components::sched::round_robin::RoundRobinComponent::new(processes)
         .finalize(components::round_robin_component_static!(NUM_PROCS));
 
@@ -640,6 +669,7 @@ pub unsafe fn main() {
         eui64,
         gpio,
         sdi12_ents,
+        app_software_watchdog,
     };
 
     assert!(base_peripherals.subghz_spi.is_enabled_clock());
