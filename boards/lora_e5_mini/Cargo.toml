@@ -22,6 +22,29 @@ capsules-system = { path = "../../capsules/system" }
 [build-dependencies]
 tock_build_scripts = { path = "../build_scripts" }
 
+[features]
+default = ["no-debug-macro"]
+
+# Optional board features enabled from the Makefile, e.g.:
+#   make flash -- --dev
+#   make flash -- --process-console --debug-macro --halt-on-panic
+# or:
+#   make flash dev=1
+#   make flash process-console=1 debug-macro=1 halt-on-panic=1
+#
+# Use with `#[cfg(feature = "...")]` in `src/main.rs`. These are intentionally
+# opt-in so the default image stays smaller on this platform.
+#
+# `dev` is a convenience feature: it enables the process console, `debug!()`,
+# and sets the panic fault policy to halt the system on app/kernel faults.
+process-console = []
+# Board `#[cfg]` only; kernel `debug!()` is re-enabled by omitting `no-debug-macro`
+# from the build (see Makefile `--no-default-features` when this is set).
+debug-macro = []
+no-debug-macro = ["kernel/no_debug_macro"]
+halt-on-panic = []
+dev = ["process-console", "debug-macro", "halt-on-panic"]
+
 [lints]
 workspace = true
 
