@@ -1,0 +1,20 @@
+b/boards/lora_e5_mini/chip_layout.ld
+
+ /* SPDX-License-Identifier: Apache-2.0 OR MIT                         */
+ /* Copyright Tock Contributors 2025.                                  */
+ 
+
+/* Memory layout for the STM32WLE5JC
+ * rom = 256KB
+ * kernel = 64KB
+ * user = 196KB
+  * ram = 64KB */
+ 
+ MEMORY
+ {
+    rom (rx)  : ORIGIN = 0x08000000, LENGTH = 0x00010000
+    prog (rx) : ORIGIN = 0x08010000, LENGTH = 0x00030000
+    ram (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00010000
+ }
+-
+ PAGE_SIZE = 2K;

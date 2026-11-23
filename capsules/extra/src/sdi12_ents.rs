@@ -97,6 +97,10 @@ pub struct Sdi12Ents<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> {
     >,
     tx_in_progress: OptionalCell<ProcessId>,
     rx_in_progress: OptionalCell<ProcessId>,
+    /// Bytes copied to the userspace buffer for the current receive.
+    rx_count: Cell<usize>,
+    /// Maximum bytes requested by userspace for the current receive.
+    rx_max: Cell<usize>,
 }
 
 /// Holds buffers and whatnot that the application has passed us.
@@ -123,6 +127,8 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> Sdi12Ents<'a, S> {
             grant,
             tx_in_progress: OptionalCell::empty(),
             rx_in_progress: OptionalCell::empty(),
+            rx_count: Cell::new(0),
+            rx_max: Cell::new(0),
         }
     }
 
@@ -243,14 +249,25 @@ where
                     }
                 }
                 Cmd::Read => {
+                    // Receive until '\n' or `data2` bytes, whichever comes
+                    // first. SDI-12 responses are variable length and end in
+                    // "\r\n", so a fixed length read can hang or truncate.
+                    // Bytes are received one at a time and copied directly to
+                    // the userspace buffer.
+                    if data2 == 0 {
+                        return CommandReturn::failure(ErrorCode::INVAL);
+                    }
                     self.rx_in_progress.set(processid);
-                    // test read data command
-                    let size = data2;
+                    self.rx_count.set(0);
+                    self.rx_max.set(data2);
 
                     // start receive and record process
-                    match self.sdi12_start_receive(size) {
+                    match self.sdi12_start_receive(1) {
                         Ok(_) => CommandReturn::success(),
-                        Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                        Err(_) => {
+                            self.rx_in_progress.clear();
+                            CommandReturn::failure(ErrorCode::FAIL)
+                        }
                     }
                 }
                 Cmd::WhoKnows => CommandReturn::success(),
@@ -294,30 +311,61 @@ impl<'a, S: sdi12::Transmit<'a> + sdi12::Receive<'a>> sdi12::ReceiveClient for S
         &self,
         buffer: &'static mut [u8],
         length: usize,
-        status: Result<(), ErrorCode>,
+        mut status: Result<(), ErrorCode>,
         _error: kernel::hil::uart::Error,
     ) {
-        // Copy received data to userspace buffer
-        self.rx_in_progress.map(|processid| {
-            let _ = self.grant.enter(processid, |_app, kernel_data| {
-                if let Ok(user_buf) = kernel_data.get_readwrite_processbuffer(rw_allow::RX_BUFFER) {
-                    let _ = user_buf.mut_enter(|dest| {
-                        let copy_len = length.min(dest.len());
-                        dest[..copy_len].copy_from_slice(&buffer[..copy_len]);
-                    });
-                }
-            });
-        });
+        let mut done = status.is_err() || length == 0;
 
-        // Put the buffer back into the TakeCell for reuse
-        self.rx_buffer.replace(buffer);
+        if length > 0 {
+            // Copy the received byte to the next position in the userspace
+            // buffer
+            let byte = buffer[0];
+            let idx = self.rx_count.get();
+            self.rx_in_progress.map(|processid| {
+                let _ = self.grant.enter(processid, |_app, kernel_data| {
+                    if let Ok(user_buf) =
+                        kernel_data.get_readwrite_processbuffer(rw_allow::RX_BUFFER)
+                    {
+                        let _ = user_buf.mut_enter(|dest| {
+                            if let Some(d) = dest.get(idx) {
+                                d.set(byte);
+                            }
+                        });
+                    }
+                });
+            });
+            self.rx_count.set(idx + 1);
+
+            // SDI-12 is 7 data bits, ignore the parity bit when checking for
+            // the end of the response
+            if byte & 0x7F == b'\n' || self.rx_count.get() >= self.rx_max.get() {
+                done = true;
+            }
+        }
+
+        if !done {
+            // Wait for the next byte
+            match self.sdi12.receive(buffer, 1) {
+                Ok(()) => return,
+                Err((e, buf)) => {
+                    self.rx_buffer.replace(buf);
+                    status = Err(e);
+                }
+            }
+        } else {
+            // Put the buffer back into the TakeCell for reuse
+            self.rx_buffer.replace(buffer);
+        }
+
+        self.state.set(State::Idle);
 
         // Schedule upcall to notify userspace
+        let count = self.rx_count.get();
         self.rx_in_progress.take().map(|processid| {
             let _ = self.grant.enter(processid, |_app, kernel_data| {
                 let _ = kernel_data.schedule_upcall(
                     upcall::SDI12_RX,
-                    (kernel::errorcode::into_statuscode(status), length, 0),
+                    (kernel::errorcode::into_statuscode(status), count, 0),
                 );
             });
         });

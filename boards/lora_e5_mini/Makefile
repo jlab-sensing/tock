@@ -6,6 +6,14 @@
 
 include ../Makefile.common
 
+# Build for deployment with `make PRODUCTION=1`, see [features] in Cargo.toml.
+# Set per target so other cargo invocations (e.g. tool builds) are unaffected.
+PRODUCTION ?= 0
+ifeq ($(PRODUCTION), 1)
+$(TARGET_PATH)/release/$(PLATFORM): VERBOSE_FLAGS += --features production
+$(TARGET_PATH)/debug/$(PLATFORM): VERBOSE_FLAGS += --features production
+endif
+
 OPENOCD=openocd
 
 # Default target for installing the kernel.

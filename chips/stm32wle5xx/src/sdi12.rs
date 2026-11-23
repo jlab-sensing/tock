@@ -174,7 +174,8 @@ impl<'a, U: Uart<'a>, A: Alarm<'a>> uart::ReceiveClient for Sdi12<'a, U, A> {
         status: Result<(), ErrorCode>,
         error: Error,
     ) {
-        self.state.replace(Sdi12State::Idle);
+        // Receiving does not change the transmit state. Receives can complete
+        // while a transmit is in progress (e.g. the command echo).
         self.rx_client
             .map(|client| client.receive_buffer(buffer, length, status, error));
     }

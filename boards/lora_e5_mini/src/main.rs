@@ -38,6 +38,7 @@ use stm32wle5jc::subghz_radio::SubGhzRadioVirtualGpio;
 /// Support routines for debugging I/O.
 pub mod io;
 
+
 #[allow(dead_code)]
 mod test;
 
@@ -59,6 +60,13 @@ static PANIC_RESOURCES: SingleThreadValue<PanicResources<ChipHw, ProcessPrinterI
     SingleThreadValue::new();
 
 // How should the kernel respond when a process faults.
+// In production, restart the faulting app so the node keeps running unattended.
+#[cfg(feature = "production")]
+const FAULT_RESPONSE: capsules_system::process_policies::RestartWithDebugFaultPolicy =
+    capsules_system::process_policies::RestartWithDebugFaultPolicy {};
+
+// In development, we want to panic so that we can debug the issue.
+#[cfg(not(feature = "production"))]
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
 
@@ -656,6 +664,8 @@ pub unsafe fn main() {
         static _eappmem: u8;
     }
 
+    debug!("Apps start at: {:p}", core::ptr::addr_of!(_sapps));
+    debug!("Apps end at: {:p}", core::ptr::addr_of!(_eapps));
     kernel::process::load_processes(
         board_kernel,
         chip,
@@ -675,11 +685,17 @@ pub unsafe fn main() {
         debug!("{:?}", err);
     });
 
+for i in 0..NUM_PROCS {
+    match processes[i].get() {
+        Some(p) => debug!("Process slot {}: {}", i, p.get_process_name()),
+        None => debug!("Process slot {} is empty", i),
+    }
+}
     //Uncomment to run multi alarm test
     /*components::test::multi_alarm_test::MultiAlarmTestComponent::new(mux_alarm)
     .finalize(components::multi_alarm_test_component_buf!(stm32f429zi::tim2::Tim2))
     .run();*/
-
+    debug!("Entering main loop. Kernel loop starting now.");
     board_kernel.kernel_loop(
         &lora_e5_mini,
         chip,

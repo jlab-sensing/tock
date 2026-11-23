@@ -12,12 +12,17 @@ build = "../build.rs"
 [dependencies]
 components = { path = "../components" }
 cortexm4 = { path = "../../arch/cortex-m4" }
-kernel = { path = "../../kernel" }
+kernel = { path = "../../kernel", features = ["debug_load_processes"] }
 stm32wle5jc = { path = "../../chips/stm32wle5jc" }
 
 capsules-core = { path = "../../capsules/core" }
 capsules-extra = { path = "../../capsules/extra" }
 capsules-system = { path = "../../capsules/system" }
+
+[features]
+# Build for deployment, enable with `make PRODUCTION=1`.
+# Restarts faulting apps instead of panicking the kernel.
+production = []
 
 [build-dependencies]
 tock_build_scripts = { path = "../build_scripts" }
